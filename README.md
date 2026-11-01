@@ -67,7 +67,7 @@ Les variables en tête du script :
 | `DEPOT`           | `https://github.com/HackTechDev/Nethack500_Lubuntu2604.git` | Sources de NetHack |
 | `BRANCHE`         | `cybernethack`                                          | Branche à compiler |
 | `DEPOT_DGL`       | `https://github.com/paxed/dgamelaunch.git`              | Sources de dgamelaunch |
-| `PSEUDO_WIZARD`   | `sam`                                                   | Seul pseudo autorisé en mode debug (`WIZARDS`) |
+| `PSEUDO_WIZARD`   | `sam`                                                   | Seul compte dgamelaunch autorisé en mode debug (`WIZARDS`), une fois inscrit |
 | `LANGUE`          | `fr@cyber`                                              | Langue par défaut des joueurs (`fr`, `fr@cyber`, `en`) |
 | `NOM_SERVEUR`     | `NetHack 5.0 cybernethack`                              | Nom affiché dans le menu dgamelaunch |
 | `MAX_JOUEURS`     | `50`                                                    | Connexions simultanées maximum |
@@ -143,8 +143,9 @@ conteneur et se relance avec l'option interne `--conteneur`.
      de `localtime` et de `passwd`/`group` minimaux ;
    - **mise à jour** : `rsync` du jeu en excluant `save`, `record`,
      `logfile`, `xlogfile`, `livelog`, `perm` et `sysconf`.
-6. **sysconf** (à chaque exécution) : `WIZARDS=<PSEUDO_WIZARD>`,
-   `CHECK_PLNAME=1`, dumplogs dans `/dgldir/userdata/<pseudo>/dumplog/`,
+6. **sysconf** (à chaque exécution) : `WIZARDS=<PSEUDO_WIZARD>` seulement si
+   ce compte existe déjà dans la base dgamelaunch (sinon `WIZARDS=-aucun-`,
+   un nom impossible à inscrire), `CHECK_PLNAME=1`, dumplogs dans `/dgldir/userdata/<pseudo>/dumplog/`,
    `PANICTRACE_GDB=0`, gdb/grep désactivés. Seules ces clés sont modifiées
    (ligne active, sinon décommentée, sinon ajoutée) ; le reste du fichier est
    conservé.
@@ -165,6 +166,19 @@ conteneur et se relance avec l'option interne `--conteneur`.
    est vérifiée par `sshd -t` avant le redémarrage.
 
 ## Administration
+
+### Activer le mode debug
+
+L'inscription étant ouverte à tous, le mode debug n'est jamais accordé à un
+pseudo qui n'existe pas encore : sinon, le premier venu pourrait s'inscrire
+sous ce nom et en profiter. Après la première installation :
+
+1. connectez-vous (`ssh -p 2222 nethack@<ip>`) et inscrivez le compte
+   `PSEUDO_WIZARD` (`sam` par défaut) ;
+2. relancez `sudo ./install-serveur-nethack.sh` : le mode debug est alors
+   activé pour ce compte.
+
+### Commandes utiles
 
 ```bash
 lxc exec nethack -- bash                    # shell dans le conteneur

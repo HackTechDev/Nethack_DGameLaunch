@@ -41,6 +41,7 @@ SRC_DGL="$HOME_UTIL/dgamelaunch"
 C="/opt/nethack/chroot"          # racine du chroot
 CONF="/opt/nethack/dgamelaunch.conf"
 COMMIT_DGL="/opt/nethack/dgamelaunch.commit"   # commit de la dernière compilation
+WIZARD_AUCUN="-aucun-"           # valeur de WIZARDS quand le mode debug est désactivé
 
 etape()  { printf '\n\033[1;32m==> %s\033[0m\n' "$*"; }
 info()   { printf '    %s\n' "$*"; }
@@ -142,7 +143,11 @@ hote() {
     ip_hote=$(hostname -I | awk '{print $1}')
     etape "Terminé"
     info "Connexion des joueurs : ssh -p $PORT_SSH nethack@$ip_hote"
-    info "Mode debug réservé au pseudo : $PSEUDO_WIZARD"
+    if lxc exec "$CONTENEUR" -- grep -qx "WIZARDS=$PSEUDO_WIZARD" "$C$NH/sysconf"; then
+        info "Mode debug réservé au compte : $PSEUDO_WIZARD"
+    else
+        alerte "Mode debug désactivé : inscrivez le compte « $PSEUDO_WIZARD », puis relancez le script."
+    fi
     if [ "$(etat_mot_de_passe)" != "P" ]; then
         alerte "$UTILISATEUR n'a toujours pas de mot de passe : lxc exec $CONTENEUR -- passwd $UTILISATEUR"
     fi
@@ -401,17 +406,36 @@ regler_cle() {
     fi
 }
 
+# Vrai si le compte dgamelaunch $1 existe (pseudo déjà validé : lettres et chiffres)
+compte_dgl_existe() {
+    [ "$(sqlite3 "$C/dgldir/dgamelaunch.db" \
+        "SELECT COUNT(*) FROM dglusers WHERE username = '$1';" 2>/dev/null)" = "1" ]
+}
+
 # sysconf du serveur : appliqué à chaque exécution, sans toucher au reste
 regler_sysconf() {
     etape "sysconf du serveur"
     S="$C$NH/sysconf"
     [ -f "$S" ] || erreur "$S introuvable."
-    regler_cle "$S" WIZARDS "$PSEUDO_WIZARD"
+    # Le mode debug n'est accordé que si le compte existe déjà : l'inscription
+    # étant ouverte, le premier venu pourrait sinon s'inscrire sous ce pseudo.
+    # Valeur par défaut : un nom impossible à inscrire (dgamelaunch n'accepte
+    # que lettres et chiffres), car celle d'origine (« root games ») peut l'être.
+    case "$PSEUDO_WIZARD" in
+        ''|*[!A-Za-z0-9]*) erreur "PSEUDO_WIZARD ne doit contenir que des lettres et des chiffres." ;;
+    esac
+    if compte_dgl_existe "$PSEUDO_WIZARD"; then
+        regler_cle "$S" WIZARDS "$PSEUDO_WIZARD"
+        info "Mode debug accordé au compte existant « $PSEUDO_WIZARD »"
+    else
+        regler_cle "$S" WIZARDS "$WIZARD_AUCUN"
+        alerte "Le compte « $PSEUDO_WIZARD » n'existe pas encore : mode debug désactivé."
+        alerte "Inscrivez-le vous-même (ssh -p $PORT_SSH nethack@…), puis relancez le script."
+    fi
     regler_cle "$S" CHECK_PLNAME 1
     regler_cle "$S" DUMPLOGFILE /dgldir/userdata/%n/dumplog/%t.txt
     regler_cle "$S" PANICTRACE_GDB 0
     sed -i -e 's|^GDBPATH=|#GDBPATH=|' -e 's|^GREPPATH=|#GREPPATH=|' "$S"
-    info "WIZARDS=$PSEUDO_WIZARD"
 }
 
 mettre_a_jour_chroot() {
