@@ -114,6 +114,7 @@ Chemins dérivés (dans le conteneur) :
 | `/opt/nethack/nethack.fichiers`     | Liste des fichiers du jeu installés dans le chroot |
 | `/opt/nethack/sauvegardes/`         | Sauvegardes quotidiennes (`nethack-AAAAMMJJ-HHMMSS.tar.gz`) |
 | `/usr/local/sbin/nethack-entretien` | Script d'entretien quotidien (généré) |
+| `/usr/local/sbin/nethack-adresse` (hôte) | Suivi de l'IPv4 de l'hôte en mode NAT (généré, timer `nethack-adresse.timer`) |
 | `/opt/nethack/chroot`                | Chroot des joueurs |
 
 ## Fonctionnement
@@ -138,7 +139,10 @@ conteneur et se relance avec l'option interne `--conteneur`.
      (`PerSourcePenalties`) et les limites visent le seul fautif. LXD impose
      une adresse d'écoute précise (`ADRESSE_HOTE`, ou celle de la route par
      défaut) et une IPv4 fixe pour le conteneur : son adresse actuelle est
-     fixée sur `eth0`. Si l'IPv4 de l'hôte change, relancez le script.
+     fixée sur `eth0`. Si l'IPv4 de l'hôte change (DHCP) et que
+     `ADRESSE_HOTE` est vide, le timer systemd `nethack-adresse.timer` de
+     l'hôte le détecte en moins de 2 minutes et déplace l'écoute
+     (`journalctl -u nethack-adresse`). Une réservation DHCP reste préférable.
    - **Sans NAT** : écoute sur `0.0.0.0`, tous les joueurs semblent venir de
      `127.0.0.1` ; cette adresse est donc exemptée des pénalités
      (`PerSourcePenaltyExemptList`), sinon un seul client fautif bloquerait

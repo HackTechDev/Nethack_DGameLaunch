@@ -181,6 +181,66 @@ banniere_ssh() {
         2>/dev/null || true
 }
 
+# Mode NAT avec adresse automatique : si l'IPv4 de l'hôte change (DHCP), le
+# proxy écouterait sur une adresse disparue. Un timer systemd de l'hôte vérifie
+# toutes les 2 minutes et déplace l'écoute sur la nouvelle adresse.
+suivre_adresse_hote() {
+    local unite=/etc/systemd/system/nethack-adresse
+    if [ -z "$nat" ] || [ -n "$ADRESSE_HOTE" ]; then
+        if [ -e "$unite.timer" ]; then
+            systemctl disable --now nethack-adresse.timer >/dev/null 2>&1 || true
+            rm -f "$unite.timer" "$unite.service" /usr/local/sbin/nethack-adresse
+            systemctl daemon-reload
+            info "Suivi de l'adresse de l'hôte retiré (adresse fixe ou mode sans NAT)"
+        fi
+        return
+    fi
+    {
+        cat <<EOF
+#!/bin/bash
+# Généré par install-serveur-nethack.sh : ne pas modifier, relancer le script.
+set -euo pipefail
+CONTENEUR="$CONTENEUR"
+PORT_SSH="$PORT_SSH"
+EOF
+        cat <<'EOF'
+ip=$(ip -4 route get 1.1.1.1 2>/dev/null \
+         | awk '{ for (i = 1; i < NF; i++) if ($i == "src") { print $(i + 1); exit } }')
+[ -n "$ip" ] || exit 0                       # pas de réseau : rien à faire
+actuelle=$(lxc config device get "$CONTENEUR" ssh-nethack listen 2>/dev/null) || exit 0
+nouvelle="tcp:$ip:$PORT_SSH"
+[ "$actuelle" = "$nouvelle" ] && exit 0
+lxc config device set "$CONTENEUR" ssh-nethack listen="$nouvelle"
+echo "Écoute des joueurs déplacée : $actuelle → $nouvelle"
+EOF
+    } > /usr/local/sbin/nethack-adresse
+    chmod 755 /usr/local/sbin/nethack-adresse
+    cat > "$unite.service" <<EOF
+[Unit]
+Description=Écoute du serveur NetHack sur l'IPv4 actuelle de l'hôte
+After=network-online.target snap.lxd.daemon.service
+
+[Service]
+Type=oneshot
+Environment=PATH=/snap/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ExecStart=/usr/local/sbin/nethack-adresse
+EOF
+    cat > "$unite.timer" <<EOF
+[Unit]
+Description=Vérifie l'IPv4 de l'hôte pour le serveur NetHack
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=2min
+
+[Install]
+WantedBy=timers.target
+EOF
+    systemctl daemon-reload
+    systemctl enable --now nethack-adresse.timer >/dev/null 2>&1
+    info "Suivi de l'IPv4 de l'hôte : toutes les 2 minutes (journalctl -u nethack-adresse)"
+}
+
 # Vrai si le pare-feu ufw est installé et actif (messages forcés en anglais
 # pour que le test ne dépende pas de la langue du système)
 ufw_actif() {
@@ -300,9 +360,7 @@ hote() {
         lxc config device remove "$CONTENEUR" ssh-nethack6 >/dev/null
         info "Proxy IPv6 séparé retiré"
     fi
-    if [ -n "$nat" ] && [ -z "$ADRESSE_HOTE" ]; then
-        info "Si l'IPv4 de l'hôte change, relancer le script (ou fixer ADRESSE_HOTE)."
-    fi
+    suivre_adresse_hote
 
     etape "Installation dans le conteneur"
     lxc file push "$SCRIPT" "$CONTENEUR/root/install-serveur-nethack.sh" --mode=0755
