@@ -233,8 +233,11 @@ conteneur et se relance avec l'option interne `--conteneur`.
    - **première installation** : copie modifiée de `dgl-create-chroot`,
      générée dans `/tmp` et supprimée après usage (l'original et le dépôt de
      `util01` restent intacts), puis ajout du jeu,
-     des dossiers `dgldir/{inprogress-nh500,userdata,ttyrec,rcfiles}` et
-     `mail` ;
+     des dossiers `dgldir/{inprogress-nh500,userdata}` et `mail`. Les restes
+     de `dgl-create-chroot`, prévu pour NetHack 3.4.3 (dossiers vides
+     `inprogress-nh343`, `ttyrec`, `rcfiles`, options `dgl-default-rcfile.nh343`
+     et copie inutilisée du binaire dgamelaunch dans le chroot), sont
+     supprimés à chaque exécution, seulement s'ils sont vides ou inutilisés ;
    - **mise à jour** : d'abord deux vérifications.
      - **Parties en cours** (fichiers de `dgldir/inprogress-nh500` dont le
        processus existe encore) : la mise à jour est reportée, sauf

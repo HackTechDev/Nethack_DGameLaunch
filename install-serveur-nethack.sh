@@ -795,7 +795,29 @@ creer_chroot() {
     (cd "$C$NH" && touch record logfile xlogfile livelog perm)
     nettoyer_binaire_dgl
     manifeste_jeu > "$MANIFESTE"
-    mkdir -p "$C"/dgldir/{inprogress-nh500,userdata,ttyrec,rcfiles} "$C/mail"
+    mkdir -p "$C"/dgldir/{inprogress-nh500,userdata} "$C/mail"
+}
+
+# Restes de dgl-create-chroot, prévu pour NetHack 3.4.3 et un dgamelaunch
+# lancé depuis le chroot : dossiers vides inutilisés (enregistrements et
+# options sont dans userdata/<pseudo>), options par défaut 3.4.3 et copie du
+# binaire dgamelaunch (SSH lance /opt/nethack/dgamelaunch). Seul ce qui est
+# vide ou inutilisé par la configuration est supprimé.
+nettoyer_restes_dgl() {
+    local d f
+    for d in inprogress-nh343 ttyrec rcfiles; do
+        [ -d "$C/dgldir/$d" ] && rmdir --ignore-fail-on-non-empty "$C/dgldir/$d"
+    done
+    if ! grep -q 'nh343' "$CONF" 2>/dev/null; then
+        rm -f "$C/dgl-default-rcfile.nh343"
+    fi
+    if ! grep -q '^[^#]*"/dgamelaunch' "$CONF" 2>/dev/null; then
+        [ -L "$C/dgamelaunch" ] && rm -f "$C/dgamelaunch"
+        for f in "$C"/dgamelaunch.[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]; do
+            [ -f "$f" ] && rm -f "$f"
+        done
+    fi
+    return 0
 }
 
 # dgl-create-chroot copie le binaire sous nethack.AAAAMMJJ avec un lien
@@ -1315,6 +1337,7 @@ conteneur() {
     proprietaires_chroot
     regler_sysconf
     configurer_dgamelaunch
+    nettoyer_restes_dgl
     configurer_ssh
     installer_entretien
 }
