@@ -200,7 +200,9 @@ conteneur et se relance avec l'option interne `--conteneur`.
    (`adduser --disabled-password`) ; `nhjeu`, compte système sans connexion
    ni dossier personnel, pour les parties.
 3. **Compilation de NetHack** (sous `util01`) : clone ou met à jour la
-   branche (`git pull --ff-only`). Les fichiers suivis par git ne sont jamais
+   branche (`git fetch`, puis avance rapide seulement). Si le dépôt est
+   injoignable (réseau, GitHub), une alerte l'indique et la version locale
+   est compilée : le script peut être relancé hors ligne. Les fichiers suivis par git ne sont jamais
    modifiés : le script génère à chaque exécution deux copies adaptées,
    ignorées par git (`.git/info/exclude`), pour installer dans `~/nethack500`
    avec le lanceur dans `~/bin` :

@@ -594,8 +594,13 @@ if [ -d "$SRC_NH/.git" ]; then
         echo "    Modifications locales conservées et compilées :"
         git status --short --untracked-files=no | sed 's/^/      /'
     fi
-    git fetch origin "$BRANCHE"
-    if ! { git checkout "$BRANCHE" && git pull --ff-only origin "$BRANCHE"; }; then
+    # Dépôt injoignable (réseau, GitHub) : la version locale est compilée,
+    # pour que le script puisse être relancé hors ligne
+    if ! git fetch origin "$BRANCHE"; then
+        printf '\033[1;33m[!] Dépôt %s injoignable : pas de mise à jour, la version locale est compilée.\033[0m\n' \
+            "$DEPOT" >&2
+        git checkout "$BRANCHE" >/dev/null 2>&1 || true
+    elif ! { git checkout "$BRANCHE" && git merge --ff-only "origin/$BRANCHE"; }; then
         printf '\033[1;33m[!] Mise à jour de %s impossible (modifications locales en conflit\n    ou commits divergents) : rien n'"'"'a été écrasé, la version locale est compilée.\033[0m\n' \
             "$BRANCHE" >&2
     fi
