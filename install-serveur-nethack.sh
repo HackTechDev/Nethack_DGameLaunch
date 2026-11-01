@@ -10,8 +10,12 @@
 #     sudo ./install-serveur-nethack.sh
 #
 # Le script peut être relancé : il saute ce qui est déjà fait. Si le chroot
-# existe déjà, le jeu y est mis à jour sans toucher aux comptes, aux parties
-# ni au sysconf du serveur.
+# existe déjà, le jeu y est mis à jour en conservant comptes, sauvegardes et
+# scores (mise à jour reportée s'il y a des parties en cours ou si les
+# sauvegardes deviendraient incompatibles). Les réglages ci-dessous sont
+# réappliqués à chaque exécution ; dans sysconf et dgamelaunch.conf, seules
+# les lignes qui en dépendent sont modifiées, le reste est conservé.
+# Voir README.md pour le détail.
 # =============================================================================
 if [ -z "${BASH_VERSION:-}" ]; then
     echo "Ce script nécessite bash : sudo ./install-serveur-nethack.sh (ou sudo bash …)" >&2
