@@ -1119,10 +1119,20 @@ tar -C "$C" --exclude=dgldir/dgamelaunch.db --exclude='dgldir/userdata/*/ttyrec'
 mv "$archive.partiel" "$archive"
 find "$DEST" -maxdepth 1 -name 'nethack-*.tar.gz' -mtime +"$SAUVEGARDES_JOURS" -delete
 
-# Enregistrements de parties : compressés au bout d'un jour (une partie en
-# cours écrit encore dans le sien), supprimés au bout de TTYREC_JOURS jours
-find "$C/dgldir/userdata" -path '*/ttyrec/*' -type f -name '*.ttyrec' -mtime +0 \
-    -exec gzip -q {} +
+# Enregistrements de parties : compressés au bout d'un jour, sauf ceux des
+# parties en cours (même inactives depuis plus d'un jour, elles y écrivent
+# encore : les compresser perdrait la suite). dgamelaunch nomme le fichier de
+# partie en cours « pseudo:fichier.ttyrec ». Supprimés au bout de TTYREC_JOURS.
+declare -A en_cours=()
+for f in "$C"/dgldir/inprogress-*/*; do
+    [ -f "$f" ] || continue
+    nom=${f##*/}
+    en_cours["$C/dgldir/userdata/${nom%%:*}/ttyrec/${nom#*:}"]=1
+done
+find "$C/dgldir/userdata" -path '*/ttyrec/*' -type f -name '*.ttyrec' -mtime +0 -print0 \
+    | while IFS= read -r -d '' t; do
+          [ -n "${en_cours[$t]:-}" ] || gzip -q "$t"
+      done
 if [ "$TTYREC_JOURS" -gt 0 ]; then
     find "$C/dgldir/userdata" -path '*/ttyrec/*' -type f -mtime +"$TTYREC_JOURS" -delete
 fi

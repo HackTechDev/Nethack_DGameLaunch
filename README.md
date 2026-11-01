@@ -273,7 +273,8 @@ conteneur et se relance avec l'option interne `--conteneur`.
       `archives` et `dgamelaunch.conf`. Les enregistrements de parties n'y
       sont pas (trop volumineux). `SAUVEGARDES_JOURS` jours sont gardés.
     - **Enregistrements de parties** (ttyrec) : compressés au bout d'un jour,
-      supprimés au bout de `TTYREC_JOURS` jours (`0` = jamais).
+      sauf ceux des parties encore en cours (même inactives), supprimés au
+      bout de `TTYREC_JOURS` jours (`0` = jamais).
 
 ## Administration
 
