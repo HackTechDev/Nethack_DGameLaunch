@@ -53,6 +53,9 @@ MAX_JOUEURS="50"                 # connexions simultanées maximum
 INSCRIPTIONS="oui"               # oui : tout visiteur peut créer un compte ;
                                  # non : inscriptions fermées (comptes existants
                                  # conservés)
+ALERTE_INSCRIPTIONS="100"        # nouveaux comptes en un jour au-delà desquels
+                                 # l'entretien quotidien signale une vague
+                                 # d'inscriptions (0 = pas d'alerte)
 SAUVEGARDES_JOURS="14"           # sauvegardes quotidiennes (comptes, parties) gardées
 SAUVEGARDES_HOTE="/var/backups/nethack"  # dossier de l'hôte où elles sont écrites,
                                  # pour survivre à la suppression du conteneur
@@ -451,8 +454,8 @@ hote() {
         alerte "$UTILISATEUR n'a toujours pas de mot de passe : lxc exec $CONTENEUR -- passwd $UTILISATEUR"
     fi
     if lxc exec "$CONTENEUR" -- systemctl is-failed --quiet nethack-entretien.service; then
-        alerte "Le dernier entretien quotidien a échoué (disque presque plein ?) :"
-        lxc exec "$CONTENEUR" -- journalctl -u nethack-entretien.service -n 5 --no-pager -o cat >&2 || true
+        alerte "Le dernier entretien quotidien a échoué (disque presque plein, vague d'inscriptions ?) :"
+        lxc exec "$CONTENEUR" -- journalctl -u nethack-entretien.service -n 10 --no-pager -o cat >&2 || true
     fi
 }
 
@@ -1303,9 +1306,10 @@ EOF
 # compression et suppression des vieux enregistrements de parties (ttyrec)
 installer_entretien() {
     etape "Entretien quotidien (sauvegardes, enregistrements de parties)"
-    case "$SAUVEGARDES_JOURS$TTYREC_JOURS" in
-        *[!0-9]*) erreur "SAUVEGARDES_JOURS et TTYREC_JOURS doivent être des nombres." ;;
+    case "$SAUVEGARDES_JOURS$TTYREC_JOURS$ALERTE_INSCRIPTIONS" in
+        *[!0-9]*) erreur "SAUVEGARDES_JOURS, TTYREC_JOURS et ALERTE_INSCRIPTIONS doivent être des nombres." ;;
     esac
+    [ -n "$ALERTE_INSCRIPTIONS" ] || erreur "ALERTE_INSCRIPTIONS doit être un nombre." 
     [ "$SAUVEGARDES_JOURS" -ge 1 ] || erreur "SAUVEGARDES_JOURS doit valoir au moins 1."
     {
         cat <<EOF
@@ -1318,6 +1322,8 @@ CONF="$CONF"
 DEST="$SAUVEGARDES"
 SAUVEGARDES_JOURS=$SAUVEGARDES_JOURS
 TTYREC_JOURS=$TTYREC_JOURS
+ALERTE_INSCRIPTIONS=$ALERTE_INSCRIPTIONS
+COMPTES_PRECEDENT="/opt/nethack/comptes.precedent"
 EOF
         cat <<'EOF'
 umask 077
@@ -1360,17 +1366,34 @@ if [ "$TTYREC_JOURS" -gt 0 ]; then
 fi
 echo "Sauvegarde : $archive ($(du -h "$archive" | cut -f1))"
 
-# Bilan : les inscriptions étant ouvertes à tous, une vague de comptes peut
-# remplir la base et le disque (le pool de stockage LXD, partagé avec les
-# autres conteneurs). Au-delà de 90 %, le service se termine en échec : il
-# apparaît dans « systemctl --failed » et le script d'installation le signale.
-comptes=$(sqlite3 "$C/dgldir/dgamelaunch.db" "SELECT COUNT(*) FROM dglusers;")
-echo "Comptes : $comptes ; données des joueurs : $(du -sh "$C/dgldir" | cut -f1)"
+# Bilan : les inscriptions étant ouvertes à tous (dgamelaunch n'en limite
+# pas le rythme), une vague de comptes peut remplir la base et le disque (le
+# pool de stockage LXD, partagé avec les autres conteneurs). Vague
+# d'inscriptions ou disque occupé à plus de 90 % : le service se termine en
+# échec, visible dans « systemctl --failed » et signalé par le script
+# d'installation.
+echec=0
+base="$C/dgldir/dgamelaunch.db"
+comptes=$(sqlite3 "$base" "SELECT COUNT(*) FROM dglusers;")
+# Hachés DES : comptes inscrits avant le correctif de dgamelaunch et dont le
+# joueur ne s'est pas reconnecté depuis (haché remplacé à la connexion)
+des=$(sqlite3 "$base" "SELECT COUNT(*) FROM dglusers WHERE password NOT LIKE '\$%';")
+precedent=$(cat "$COMPTES_PRECEDENT" 2>/dev/null || echo "$comptes")
+nouveaux=$((comptes - precedent))
+[ "$nouveaux" -ge 0 ] || nouveaux=0
+echo "$comptes" > "$COMPTES_PRECEDENT"
+echo "Comptes : $comptes (+$nouveaux depuis le dernier entretien, $des avec un ancien haché DES)"
+echo "Données des joueurs : $(du -sh "$C/dgldir" | cut -f1)"
+if [ "$ALERTE_INSCRIPTIONS" -gt 0 ] && [ "$nouveaux" -ge "$ALERTE_INSCRIPTIONS" ]; then
+    echo "ALERTE : $nouveaux nouveaux comptes (INSCRIPTIONS=non pour fermer les inscriptions)" >&2
+    echec=1
+fi
 occupe=$(df --output=pcent "$C" | tail -n 1 | tr -dc '0-9')
 if [ "$occupe" -ge 90 ]; then
     echo "ALERTE : disque occupé à $occupe % (INSCRIPTIONS=non pour fermer les inscriptions)" >&2
-    exit 1
+    echec=1
 fi
+exit "$echec"
 EOF
     } > /usr/local/sbin/nethack-entretien
     chmod 755 /usr/local/sbin/nethack-entretien

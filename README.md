@@ -92,6 +92,7 @@ Les variables en tête du script :
 | `NOM_SERVEUR`     | `NetHack 5.0 cybernethack`                              | Nom affiché dans le menu dgamelaunch |
 | `MAX_JOUEURS`     | `50`                                                    | Connexions simultanées maximum |
 | `INSCRIPTIONS`    | `oui`                                                   | `non` ferme les inscriptions (les comptes existants restent utilisables) |
+| `ALERTE_INSCRIPTIONS` | `100`                                               | Nouveaux comptes depuis l'entretien précédent au-delà desquels il signale une vague d'inscriptions (`0` = pas d'alerte) |
 | `SAUVEGARDES_JOURS` | `14`                                                  | Nombre de jours de sauvegardes quotidiennes gardés |
 | `SAUVEGARDES_HOTE` | `/var/backups/nethack`                                | Dossier de l'hôte où sont écrites les sauvegardes (vide = dans le conteneur seulement) |
 | `TTYREC_JOURS`    | `180`                                                   | Enregistrements de parties gardés, en jours (`0` = tous) |
@@ -317,8 +318,11 @@ conteneur et se relance avec l'option interne `--conteneur`.
     - **Enregistrements de parties** (ttyrec) : compressés au bout d'un jour,
       sauf ceux des parties encore en cours (même inactives), supprimés au
       bout de `TTYREC_JOURS` jours (`0` = jamais).
-    - **Bilan** : nombre de comptes et place occupée par les données des
-      joueurs. Au-delà de 90 % de disque occupé (pool de stockage LXD,
+    - **Bilan** : nombre de comptes, nouveaux comptes depuis l'entretien
+      précédent, comptes ayant encore un ancien haché DES (joueurs pas
+      reconnectés depuis le correctif des mots de passe) et place occupée
+      par les données des joueurs. Au-delà de `ALERTE_INSCRIPTIONS` nouveaux
+      comptes, ou de 90 % de disque occupé (pool de stockage LXD,
       partagé avec les autres conteneurs), le service se termine en échec :
       il apparaît dans `systemctl --failed` du conteneur, et le script
       d'installation l'affiche à la fin de chaque exécution
@@ -327,7 +331,9 @@ conteneur et se relance avec l'option interne `--conteneur`.
       bloque toute écriture, y compris celle qui permettrait de le relever
       (constaté avec LXD 6). dgamelaunch ne limite pas le
       rythme des inscriptions : en cas de vague de comptes indésirables,
-      passez `INSCRIPTIONS=non` et relancez le script.
+      passez `INSCRIPTIONS=non` et relancez le script. Les hachés DES ne
+      peuvent pas être convertis sans le mot de passe : ils ne disparaissent
+      qu'à la reconnexion de chaque joueur.
 
 ## Administration
 
