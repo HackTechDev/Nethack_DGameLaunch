@@ -364,17 +364,26 @@ creer_chroot() {
     rsync -a "$NH/" "$C$NH/"
     mkdir -p "$C"/dgldir/{inprogress-nh500,userdata,ttyrec,rcfiles} "$C/mail"
     chown -R "$UTILISATEUR:$UTILISATEUR" "$C/dgldir" "$C/mail" "$C$HOME_UTIL"
+}
 
+# Bibliothèques et fichiers système du chroot, recopiés à chaque exécution :
+# le jeu étant recompilé avec les bibliothèques du conteneur (mises à jour par
+# apt), le chroot doit avoir les mêmes. rsync remplace chaque fichier par
+# renommage, sans risque pour les parties en cours ; les fichiers inchangés
+# ne sont pas recopiés.
+copier_systeme_chroot() {
+    etape "Fichiers système du chroot"
     # Bibliothèques : celles listées par ldd (chargeur dynamique compris), plus
     # libgcc_s, que ldd ne montre pas car la glibc la charge à l'exécution
     # (pile d'appels en cas de plantage, annulation de thread). Son dossier
     # dépend de l'architecture : x86_64-linux-gnu, aarch64-linux-gnu…
     multiarch=$(gcc -dumpmachine)
-    for lib in $(ldd "$NH/nethack" | grep -o '/[^ ]*') \
+    for lib in $( { ldd "$NH/nethack"; ldd /opt/nethack/dgamelaunch; } \
+                      | grep -o '/[^ ]*' | sort -u) \
                "/lib/$multiarch/libgcc_s.so.1" "/usr/lib/$multiarch/libgcc_s.so.1"; do
         [ -e "$lib" ] || continue
         mkdir -p "$C$(dirname "$lib")"
-        [ -e "$C$lib" ] || cp "$lib" "$C$lib"
+        rsync -aL "$lib" "$C$lib"
     done
     if ! ls "$C"/lib/"$multiarch"/libgcc_s.so.1 "$C"/usr/lib/"$multiarch"/libgcc_s.so.1 \
             >/dev/null 2>&1; then
@@ -382,13 +391,19 @@ creer_chroot() {
         alerte "Chercher son chemin avec « ldconfig -p | grep libgcc_s » et la copier dans $C."
     fi
 
-    mkdir -p "$C/usr/share" "$C/usr/lib" "$C/lib" "$C/etc" "$C/dev"
-    cp -a /usr/share/terminfo "$C/usr/share/"
-    [ -d /lib/terminfo ] && cp -a /lib/terminfo "$C/lib/"
-    cp /etc/localtime "$C/etc/"
-    cp -a /usr/lib/locale "$C/usr/lib/"
-    grep -E "^(root|$UTILISATEUR):" /etc/passwd > "$C/etc/passwd"
-    grep -E "^(root|$UTILISATEUR):" /etc/group  > "$C/etc/group"
+    mkdir -p "$C/usr/share/terminfo" "$C/usr/lib/locale" "$C/etc" "$C/dev"
+    rsync -a /usr/share/terminfo/ "$C/usr/share/terminfo/"
+    if [ -d /lib/terminfo ]; then
+        mkdir -p "$C/lib/terminfo"
+        rsync -a /lib/terminfo/ "$C/lib/terminfo/"
+    fi
+    rsync -a /usr/lib/locale/ "$C/usr/lib/locale/"
+    rsync -aL /etc/localtime "$C/etc/localtime"
+    grep -E "^(root|$UTILISATEUR):" /etc/passwd > "$C/etc/passwd.nouveau"
+    grep -E "^(root|$UTILISATEUR):" /etc/group  > "$C/etc/group.nouveau"
+    mv "$C/etc/passwd.nouveau" "$C/etc/passwd"
+    mv "$C/etc/group.nouveau" "$C/etc/group"
+    info "Bibliothèques, terminfo, locales, fuseau horaire et comptes à jour."
 }
 
 # Échappe une valeur pour la partie remplacement d'un s|...|...| de sed
@@ -528,6 +543,7 @@ conteneur() {
         fi
         creer_chroot
     fi
+    copier_systeme_chroot
     regler_sysconf
     configurer_dgamelaunch
     configurer_ssh

@@ -138,11 +138,16 @@ conteneur et se relance avec l'option interne `--conteneur`.
    - **première installation** : copie modifiée de `dgl-create-chroot`
      (`dgl-create-chroot.nh500`, l'original reste intact), puis ajout du jeu,
      des dossiers `dgldir/{inprogress-nh500,userdata,ttyrec,rcfiles}` et
-     `mail`, des bibliothèques (`ldd` + `libgcc_s`, cherchée dans le dossier de
-     l'architecture donné par `gcc -dumpmachine`), de terminfo, des locales,
-     de `localtime` et de `passwd`/`group` minimaux ;
+     `mail` ;
    - **mise à jour** : `rsync` du jeu en excluant `save`, `record`,
-     `logfile`, `xlogfile`, `livelog`, `perm` et `sysconf`.
+     `logfile`, `xlogfile`, `livelog`, `perm` et `sysconf` ;
+   - **dans les deux cas**, fichiers système recopiés depuis le conteneur :
+     bibliothèques de NetHack et de dgamelaunch (`ldd` + `libgcc_s`, cherchée
+     dans le dossier de l'architecture donné par `gcc -dumpmachine`),
+     terminfo, locales, `localtime` et `passwd`/`group` minimaux. Comme le jeu
+     est recompilé avec les bibliothèques du conteneur, le chroot doit avoir
+     les mêmes. `rsync` remplace les fichiers par renommage : les parties en
+     cours ne sont pas perturbées.
 6. **sysconf** (à chaque exécution) : `WIZARDS=<PSEUDO_WIZARD>` seulement si
    ce compte existe déjà dans la base dgamelaunch (sinon `WIZARDS=-aucun-`,
    un nom impossible à inscrire), `CHECK_PLNAME=1`, dumplogs dans `/dgldir/userdata/<pseudo>/dumplog/`,
