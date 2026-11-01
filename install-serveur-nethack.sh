@@ -51,6 +51,9 @@ LANGUE="fr@cyber"                # langue par défaut des joueurs (fr, fr@cyber,
 NOM_SERVEUR="NetHack 5.0 cybernethack"
 MAX_JOUEURS="50"                 # connexions simultanées maximum
 SAUVEGARDES_JOURS="14"           # sauvegardes quotidiennes (comptes, parties) gardées
+SAUVEGARDES_HOTE="/var/backups/nethack"  # dossier de l'hôte où elles sont écrites,
+                                 # pour survivre à la suppression du conteneur
+                                 # (vide = dans le conteneur seulement)
 TTYREC_JOURS="180"               # enregistrements de parties gardés (0 = tous)
 MAJ_SYSTEME="premiere"           # apt full-upgrade du conteneur : premiere
                                  # (première installation), toujours ou jamais ;
@@ -118,6 +121,57 @@ fixer_ip_conteneur() {
         lxc config device override "$CONTENEUR" eth0 ipv4.address="$actuelle" >&2
     fi
     echo "$actuelle"
+}
+
+# Sauvegardes quotidiennes écrites dans un dossier de l'hôte, monté dans le
+# conteneur : elles survivent à sa suppression. Dossier root:root en 0700 sur
+# l'hôte (il contient la base des comptes).
+sauvegardes_sur_hote() {
+    etape "Sauvegardes sur l'hôte"
+    local actuelle uid_root
+    actuelle=$(lxc config device get "$CONTENEUR" sauvegardes source 2>/dev/null || true)
+    case "$SAUVEGARDES_HOTE" in
+        "")
+            if [ -n "$actuelle" ]; then
+                lxc config device remove "$CONTENEUR" sauvegardes >/dev/null
+                info "Montage retiré : les sauvegardes déjà faites restent dans $actuelle (hôte)"
+            fi
+            info "Sauvegardes dans le conteneur seulement ($SAUVEGARDES)"
+            return ;;
+        /*) ;;
+        *)  erreur "SAUVEGARDES_HOTE doit être un chemin absolu." ;;
+    esac
+    mkdir -p "$SAUVEGARDES_HOTE"
+    chown root:root "$SAUVEGARDES_HOTE"
+    chmod 700 "$SAUVEGARDES_HOTE"
+    if [ -z "$actuelle" ]; then
+        # Sauvegardes déjà faites dans le conteneur : mises de côté, puis
+        # déplacées dans le dossier monté (sinon le montage les masquerait)
+        if lxc exec "$CONTENEUR" -- test -d "$SAUVEGARDES"; then
+            lxc exec "$CONTENEUR" -- mv "$SAUVEGARDES" "$SAUVEGARDES.avant-hote"
+        fi
+        # shift=true : root du conteneur = root de l'hôte dans ce dossier ;
+        # sinon, le dossier est donné au root du conteneur vu de l'hôte
+        if ! lxc config device add "$CONTENEUR" sauvegardes disk \
+                source="$SAUVEGARDES_HOTE" path="$SAUVEGARDES" shift=true >/dev/null 2>&1; then
+            uid_root=$(lxc config get "$CONTENEUR" volatile.idmap.current \
+                           | grep -o '"Isuid":true,"Isgid":false,"Hostid":[0-9]*' \
+                           | head -n 1 | grep -o '[0-9]*$')
+            [ -n "$uid_root" ] || erreur "Correspondance des UID du conteneur introuvable."
+            chown "$uid_root:$uid_root" "$SAUVEGARDES_HOTE"
+            lxc config device add "$CONTENEUR" sauvegardes disk \
+                source="$SAUVEGARDES_HOTE" path="$SAUVEGARDES" >/dev/null
+        fi
+        if lxc exec "$CONTENEUR" -- test -d "$SAUVEGARDES.avant-hote"; then
+            lxc exec "$CONTENEUR" -- sh -c "cp -a '$SAUVEGARDES.avant-hote/.' '$SAUVEGARDES/' \
+                && rm -rf '$SAUVEGARDES.avant-hote'"
+            info "Sauvegardes déjà faites déplacées sur l'hôte"
+        fi
+    elif [ "$actuelle" != "$SAUVEGARDES_HOTE" ]; then
+        lxc config device set "$CONTENEUR" sauvegardes source="$SAUVEGARDES_HOTE"
+        info "Dossier changé : $actuelle → $SAUVEGARDES_HOTE (anciennes sauvegardes laissées dans $actuelle)"
+    fi
+    info "$SAUVEGARDES_HOTE (hôte) monté sur $SAUVEGARDES (conteneur)"
 }
 
 # Vrai si le pare-feu ufw est installé et actif (messages forcés en anglais
@@ -240,6 +294,8 @@ hote() {
     etape "Installation dans le conteneur"
     lxc file push "$SCRIPT" "$CONTENEUR/root/install-serveur-nethack.sh" --mode=0755
     lxc exec "$CONTENEUR" -- /root/install-serveur-nethack.sh --conteneur
+
+    sauvegardes_sur_hote
 
     etape "Fichiers spéciaux du chroot (/dev/urandom, /dev/null)"
     for dev in urandom null; do

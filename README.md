@@ -80,6 +80,7 @@ Les variables en tête du script :
 | `NOM_SERVEUR`     | `NetHack 5.0 cybernethack`                              | Nom affiché dans le menu dgamelaunch |
 | `MAX_JOUEURS`     | `50`                                                    | Connexions simultanées maximum |
 | `SAUVEGARDES_JOURS` | `14`                                                  | Nombre de jours de sauvegardes quotidiennes gardés |
+| `SAUVEGARDES_HOTE` | `/var/backups/nethack`                                | Dossier de l'hôte où sont écrites les sauvegardes (vide = dans le conteneur seulement) |
 | `TTYREC_JOURS`    | `180`                                                   | Enregistrements de parties gardés, en jours (`0` = tous) |
 | `MAJ_SYSTEME`     | `premiere`                                              | `apt full-upgrade` du conteneur : `premiere` (première installation), `toujours` ou `jamais` |
 
@@ -140,11 +141,13 @@ conteneur et se relance avec l'option interne `--conteneur`.
    Si un de ces réglages ou `PORT_SSH` change, le device est recréé et
    l'ancien port refermé dans ufw.
 5. **Installation** dans le conteneur (partie 2).
-6. **Fichiers spéciaux** : `/dev/urandom` et `/dev/null` sont fournis au chroot
+6. **Sauvegardes sur l'hôte** : dossier `SAUVEGARDES_HOTE` créé (`root:root`,
+   `0700`) et monté dans le conteneur sur `/opt/nethack/sauvegardes`.
+7. **Fichiers spéciaux** : `/dev/urandom` et `/dev/null` sont fournis au chroot
    via des devices LXD `unix-char` (`mknod` est impossible dans un conteneur
    non privilégié). Ils sont recréés si le chroot a été reconstruit.
-7. **Test** : lance `nethack --version` dans le chroot.
-8. **Mot de passe de `util01`** : demandé seulement s'il n'est pas déjà
+8. **Test** : lance `nethack --version` dans le chroot.
+9. **Mot de passe de `util01`** : demandé seulement s'il n'est pas déjà
    défini et si le script tourne dans un terminal. Il est transmis à
    `chpasswd` par l'entrée standard, donc n'apparaît ni dans `ps` ni dans
    l'historique. S'il manque toujours à la fin, une alerte le rappelle.
@@ -296,11 +299,16 @@ Pour jouer en mode debug : menu `o` de dgamelaunch, ajoutez
 
 ### Sauvegardes
 
-Les sauvegardes restent dans le conteneur : copiez-les régulièrement ailleurs,
-par exemple depuis l'hôte :
+Les sauvegardes quotidiennes sont écrites directement sur l'hôte, dans
+`SAUVEGARDES_HOTE` (`/var/backups/nethack` par défaut, `root:root`, `0700` :
+elles contiennent la base des comptes). Ce dossier est monté dans le
+conteneur sur `/opt/nethack/sauvegardes` (device LXD `sauvegardes`, avec
+`shift=true`) : supprimer le conteneur ne les efface pas. Les sauvegardes déjà
+faites dans le conteneur y sont déplacées au premier montage. Pensez tout de
+même à les copier hors de la machine.
 
 ```bash
-lxc file pull -r nethack/opt/nethack/sauvegardes/ ./sauvegardes-nethack/
+sudo ls -l /var/backups/nethack/
 lxc exec nethack -- nethack-entretien      # sauvegarde immédiate
 ```
 
