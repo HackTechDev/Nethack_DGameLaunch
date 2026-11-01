@@ -990,15 +990,30 @@ regler_sysconf() {
     # empreinte de son identifiant et de son haché de mot de passe est retenue
     # (SQLite peut réattribuer l'identifiant d'un compte supprimé) : si le compte
     # est réinscrit ou son mot de passe changé, la confirmation est redemandée.
-    local id courriel empreinte accorde=0
+    # Haché DES (comptes inscrits avant le correctif de dgamelaunch) : il est
+    # remplacé par un haché yescrypt à la connexion suivante. La confirmation
+    # le note (« :des:<n° du compte> ») pour accepter ce seul changement-là.
+    local id hache courriel empreinte marque="" confirme accorde=0
     id=$(champ_compte_dgl "$PSEUDO_WIZARD" id)
-    empreinte=$(printf '%s:%s' "$id" "$(champ_compte_dgl "$PSEUDO_WIZARD" password)" \
-                    | sha256sum | cut -c1-32)
+    hache=$(champ_compte_dgl "$PSEUDO_WIZARD" password)
+    empreinte=$(printf '%s:%s' "$id" "$hache" | sha256sum | cut -c1-32)
+    case "$hache" in ''|'$'*) ;; *) marque=":des:$id" ;; esac
+    confirme=$(cat "$WIZARD_CONFIRME" 2>/dev/null || true)
     if [ -z "$id" ]; then
         alerte "Le compte « $PSEUDO_WIZARD » n'existe pas encore : mode debug désactivé."
         alerte "Inscrivez-le vous-même (ssh -p $PORT_SSH nethack@…), puis relancez le script."
-    elif [ "$(cat "$WIZARD_CONFIRME" 2>/dev/null)" = "$PSEUDO_WIZARD:$empreinte" ]; then
+    elif [ "${confirme%:des:*}" = "$PSEUDO_WIZARD:$empreinte" ]; then
         accorde=1
+        # Confirmation d'une version précédente : marque DES ajoutée
+        [ "$confirme" = "$PSEUDO_WIZARD:$empreinte$marque" ] \
+            || echo "$PSEUDO_WIZARD:$empreinte$marque" > "$WIZARD_CONFIRME"
+    elif [ -z "$marque" ] && [ -n "$hache" ] \
+            && [ "${confirme#"$PSEUDO_WIZARD":*:des:}" = "$id" ] \
+            && [ "${confirme%:des:*}" != "$confirme" ]; then
+        # Même compte (même numéro), haché DES confirmé devenu yescrypt
+        echo "$PSEUDO_WIZARD:$empreinte" > "$WIZARD_CONFIRME"
+        accorde=1
+        info "Mot de passe de « $PSEUDO_WIZARD » modernisé (yescrypt) : confirmation conservée"
     else
         if grep -q "^$PSEUDO_WIZARD:" "$WIZARD_CONFIRME" 2>/dev/null; then
             alerte "Le compte « $PSEUDO_WIZARD » a changé depuis sa confirmation (mot de passe"
@@ -1008,7 +1023,7 @@ regler_sysconf() {
         alerte "Le compte « $PSEUDO_WIZARD » existe (n° $id, courriel : ${courriel:-aucun})."
         alerte "Vérifiez que c'est bien vous qui l'avez inscrit avant de lui donner le mode debug."
         if confirmer "Ce compte est-il le vôtre ?"; then
-            echo "$PSEUDO_WIZARD:$empreinte" > "$WIZARD_CONFIRME"
+            echo "$PSEUDO_WIZARD:$empreinte$marque" > "$WIZARD_CONFIRME"
             accorde=1
         elif [ -t 0 ]; then
             alerte "Mode debug refusé. Si ce compte n'est pas le vôtre, supprimez-le :"

@@ -348,8 +348,14 @@ sous ce nom et en profiter. Après la première installation :
 
 La confirmation est retenue dans `/opt/nethack/wizard.confirme` sous forme
 d'empreinte du compte (identifiant et haché du mot de passe). Elle est
-redemandée si le compte est réinscrit ou si son mot de passe change (y compris
-une fois, lors du passage automatique des mots de passe à yescrypt).
+redemandée si le compte est réinscrit ou si son mot de passe change. Seule
+exception : un compte inscrit avant le correctif des mots de passe a un haché
+DES, remplacé par un haché yescrypt à sa connexion suivante. La confirmation
+note ce cas (`:des:<numéro>`) et accepte ce seul changement, pour le même
+numéro de compte : le mode debug n'est pas retiré. Limite : si vous supprimiez
+ce compte avant de vous y être reconnecté, et qu'un autre joueur l'inscrivait
+aussitôt sous le même numéro, ce changement serait accepté aussi ; connectez-vous
+donc une fois au compte du mode debug après la mise à jour.
 
 Pour jouer en mode debug : menu `o` de dgamelaunch, ajoutez
 `OPTIONS=playmode:debug` au fichier d'options, puis lancez une partie.
