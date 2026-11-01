@@ -79,6 +79,8 @@ Les variables en tête du script :
 | `LANGUE`          | `fr@cyber`                                              | Langue par défaut des joueurs (`fr`, `fr@cyber`, `en`) |
 | `NOM_SERVEUR`     | `NetHack 5.0 cybernethack`                              | Nom affiché dans le menu dgamelaunch |
 | `MAX_JOUEURS`     | `50`                                                    | Connexions simultanées maximum |
+| `SAUVEGARDES_JOURS` | `14`                                                  | Nombre de jours de sauvegardes quotidiennes gardés |
+| `TTYREC_JOURS`    | `180`                                                   | Enregistrements de parties gardés, en jours (`0` = tous) |
 | `MAJ_SYSTEME`     | `premiere`                                              | `apt full-upgrade` du conteneur : `premiere` (première installation), `toujours` ou `jamais` |
 
 Chemins dérivés (dans le conteneur) :
@@ -94,6 +96,8 @@ Chemins dérivés (dans le conteneur) :
 | `/opt/nethack/nethack.version`       | Version du jeu installée dans le chroot |
 | `/opt/nethack/jeu.uid`               | UID sous lequel tournent les parties |
 | `/opt/nethack/nethack.fichiers`     | Liste des fichiers du jeu installés dans le chroot |
+| `/opt/nethack/sauvegardes/`         | Sauvegardes quotidiennes (`nethack-AAAAMMJJ-HHMMSS.tar.gz`) |
+| `/usr/local/sbin/nethack-entretien` | Script d'entretien quotidien (généré) |
 | `/opt/nethack/chroot`                | Chroot des joueurs |
 
 ## Fonctionnement
@@ -231,6 +235,16 @@ conteneur et se relance avec l'option interne `--conteneur`.
    `/etc/ssh/sshd_config.d/50-nethack.conf` qui force dgamelaunch
    (`ForceCommand`) et interdit tunnels, redirections et X11. La configuration
    est vérifiée par `sshd -t` avant le redémarrage.
+10. **Entretien quotidien** : script `/usr/local/sbin/nethack-entretien`
+    lancé vers 4 h 30 par le timer systemd `nethack-entretien.timer` (rattrapé
+    au démarrage s'il a été manqué).
+    - **Sauvegarde** dans `/opt/nethack/sauvegardes/` : base des comptes
+      (copie cohérente par `sqlite3 .backup`), `dgldir` (réglages et dumplogs
+      des joueurs), sauvegardes, scores et journaux du jeu, `sysconf`,
+      `archives` et `dgamelaunch.conf`. Les enregistrements de parties n'y
+      sont pas (trop volumineux). `SAUVEGARDES_JOURS` jours sont gardés.
+    - **Enregistrements de parties** (ttyrec) : compressés au bout d'un jour,
+      supprimés au bout de `TTYREC_JOURS` jours (`0` = jamais).
 
 ## Administration
 
@@ -252,6 +266,16 @@ sous ce nom et en profiter. Après la première installation :
    `PSEUDO_WIZARD` (`sam` par défaut) ;
 2. relancez `sudo ./install-serveur-nethack.sh` : le mode debug est alors
    activé pour ce compte.
+
+### Sauvegardes
+
+Les sauvegardes restent dans le conteneur : copiez-les régulièrement ailleurs,
+par exemple depuis l'hôte :
+
+```bash
+lxc file pull -r nethack/opt/nethack/sauvegardes/ ./sauvegardes-nethack/
+lxc exec nethack -- nethack-entretien      # sauvegarde immédiate
+```
 
 ### Commandes utiles
 

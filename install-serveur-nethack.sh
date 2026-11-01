@@ -45,6 +45,8 @@ PSEUDO_WIZARD="sam"              # pseudo dgamelaunch autorisé en mode debug
 LANGUE="fr@cyber"                # langue par défaut des joueurs (fr, fr@cyber, en)
 NOM_SERVEUR="NetHack 5.0 cybernethack"
 MAX_JOUEURS="50"                 # connexions simultanées maximum
+SAUVEGARDES_JOURS="14"           # sauvegardes quotidiennes (comptes, parties) gardées
+TTYREC_JOURS="180"               # enregistrements de parties gardés (0 = tous)
 MAJ_SYSTEME="premiere"           # apt full-upgrade du conteneur : premiere
                                  # (première installation), toujours ou jamais ;
                                  # les mises à jour de sécurité restent assurées
@@ -62,6 +64,7 @@ WIZARD_AUCUN="-aucun-"           # valeur de WIZARDS quand le mode debug est dé
 VERSION_NH="/opt/nethack/nethack.version"      # version du jeu installée dans le chroot
 SYSTEME_INIT="/opt/nethack/systeme.initialise" # présent après le premier full-upgrade
 MANIFESTE="/opt/nethack/nethack.fichiers"      # fichiers du jeu installés dans le chroot
+SAUVEGARDES="/opt/nethack/sauvegardes"         # sauvegardes quotidiennes (hors chroot)
 
 # Fichiers du dossier du jeu jamais recopiés depuis ~/nethack500 (motifs rsync
 # ancrés à la racine) : fichiers variables du serveur et fichiers créés par les
@@ -842,6 +845,92 @@ EOF
     systemctl restart ssh
 }
 
+# Entretien quotidien (timer systemd) : sauvegarde des comptes et des parties,
+# compression et suppression des vieux enregistrements de parties (ttyrec)
+installer_entretien() {
+    etape "Entretien quotidien (sauvegardes, enregistrements de parties)"
+    case "$SAUVEGARDES_JOURS$TTYREC_JOURS" in
+        *[!0-9]*) erreur "SAUVEGARDES_JOURS et TTYREC_JOURS doivent être des nombres." ;;
+    esac
+    [ "$SAUVEGARDES_JOURS" -ge 1 ] || erreur "SAUVEGARDES_JOURS doit valoir au moins 1."
+    {
+        cat <<EOF
+#!/bin/bash
+# Généré par install-serveur-nethack.sh : ne pas modifier, relancer le script.
+set -euo pipefail
+C="$C"
+NH="${NH#/}"
+CONF="$CONF"
+DEST="$SAUVEGARDES"
+SAUVEGARDES_JOURS=$SAUVEGARDES_JOURS
+TTYREC_JOURS=$TTYREC_JOURS
+EOF
+        cat <<'EOF'
+umask 077
+mkdir -p "$DEST"
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+
+# Sauvegarde : base des comptes (copie cohérente même en cours d'écriture),
+# sauvegardes, scores et journaux du jeu, sysconf, configuration et réglages
+# des joueurs. Les enregistrements de parties (volumineux) n'y sont pas.
+sqlite3 "$C/dgldir/dgamelaunch.db" ".backup '$tmp/dgamelaunch.db'"
+cp "$CONF" "$tmp/"
+elements=(dgldir)
+for f in save record logfile xlogfile livelog sysconf archives; do
+    if [ -e "$C/$NH/$f" ]; then elements+=("$NH/$f"); fi
+done
+archive="$DEST/nethack-$(date +%Y%m%d-%H%M%S).tar.gz"
+tar -C "$C" --exclude=dgldir/dgamelaunch.db --exclude='dgldir/userdata/*/ttyrec' \
+    --exclude='dgldir/inprogress-*' -czf "$archive.partiel" "${elements[@]}" \
+    -C "$tmp" dgamelaunch.db "$(basename "$CONF")"
+mv "$archive.partiel" "$archive"
+find "$DEST" -maxdepth 1 -name 'nethack-*.tar.gz' -mtime +"$SAUVEGARDES_JOURS" -delete
+
+# Enregistrements de parties : compressés au bout d'un jour (une partie en
+# cours écrit encore dans le sien), supprimés au bout de TTYREC_JOURS jours
+find "$C/dgldir/userdata" -path '*/ttyrec/*' -type f -name '*.ttyrec' -mtime +0 \
+    -exec gzip -q {} +
+if [ "$TTYREC_JOURS" -gt 0 ]; then
+    find "$C/dgldir/userdata" -path '*/ttyrec/*' -type f -mtime +"$TTYREC_JOURS" -delete
+fi
+echo "Sauvegarde : $archive ($(du -h "$archive" | cut -f1))"
+EOF
+    } > /usr/local/sbin/nethack-entretien
+    chmod 755 /usr/local/sbin/nethack-entretien
+
+    cat > /etc/systemd/system/nethack-entretien.service <<EOF
+[Unit]
+Description=Entretien du serveur NetHack (sauvegardes, enregistrements de parties)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/nethack-entretien
+Nice=10
+IOSchedulingClass=idle
+EOF
+    cat > /etc/systemd/system/nethack-entretien.timer <<EOF
+[Unit]
+Description=Entretien quotidien du serveur NetHack
+
+[Timer]
+OnCalendar=*-*-* 04:30:00
+RandomizedDelaySec=15min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+    systemctl daemon-reload
+    systemctl enable --now nethack-entretien.timer >/dev/null 2>&1
+    info "Tous les jours vers 4 h 30 : sauvegarde dans $SAUVEGARDES ($SAUVEGARDES_JOURS jours gardés)"
+    if [ "$TTYREC_JOURS" -gt 0 ]; then
+        info "Enregistrements de parties compressés après 1 jour, supprimés après $TTYREC_JOURS jours"
+    else
+        info "Enregistrements de parties compressés après 1 jour, jamais supprimés"
+    fi
+}
+
 conteneur() {
     paquets
     utilisateur
@@ -867,6 +956,7 @@ conteneur() {
     regler_sysconf
     configurer_dgamelaunch
     configurer_ssh
+    installer_entretien
 }
 
 # =============================================================================
