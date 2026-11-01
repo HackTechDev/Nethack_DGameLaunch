@@ -1184,16 +1184,25 @@ proprietaires_chroot() {
     chmod 755 "$C/home" "$C$HOME_UTIL"
     chown root:"$JEU" "$J"
     chmod 1775 "$J"
+    # Le compte du jeu peut créer n'importe quel nom dans ce dossier, y compris
+    # des liens symboliques : jamais suivis ici (chown -h ; chmod, qui suit
+    # toujours un lien donné en argument, n'est pas appliqué aux liens), et
+    # supprimés s'ils n'appartiennent pas à root (le jeu n'en crée pas)
     for f in "$J"/* "$J"/.[!.]*; do
         [ -e "$f" ] || [ -L "$f" ] || continue
         nom=${f##*/}
+        if [ -L "$f" ] && [ "$(stat -c %u "$f")" != 0 ]; then
+            rm -f "$f"
+            alerte "Lien symbolique créé par le compte du jeu supprimé : $f"
+            continue
+        fi
         if [ "$nom" = archives ]; then
-            chown -R root:root "$f"
+            chown -R -h root:root "$f"
         elif est_fichier_variable "$nom" || est_fichier_de_partie "$nom"; then
-            chown -R "$JEU:$JEU" "$f"        # sauvegardes, scores, niveaux, os…
+            chown -R -h "$JEU:$JEU" "$f"     # sauvegardes, scores, niveaux, os…
         else
             chown -R -h root:root "$f"       # fichier installé ou ajouté par l'admin
-            chmod -R go-w "$f"
+            [ -L "$f" ] || chmod -R go-w "$f"
         fi
     done
     chmod 644 "$J/sysconf"

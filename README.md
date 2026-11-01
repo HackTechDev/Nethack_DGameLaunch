@@ -463,7 +463,10 @@ jamais et ne touche qu'aux lignes `chroot_path`, `shed_uid`, `shed_gid`,
   jeu a le sticky bit (`1775 root:nhjeu`) : `nhjeu` y crée ses fichiers de
   niveaux et ses os, mais ne peut pas supprimer ni remplacer ceux de root.
   Seuls les sauvegardes, scores et journaux, `dgldir` et `mail` appartiennent
-  à `nhjeu`.
+  à `nhjeu`. Les commandes lancées en root sur ces fichiers ne suivent jamais
+  un lien symbolique (`chown -h`, pas de `chmod` sur un lien), et les liens
+  créés par `nhjeu` dans le dossier du jeu sont supprimés à chaque exécution :
+  sinon, un lien vers `/tmp` ou `/etc/passwd` ferait modifier ce fichier par root.
 - **Limite connue : dgamelaunch et NetHack partagent le compte `nhjeu`.**
   dgamelaunch abandonne ses droits root pour `shed_uid` avant de lancer la
   partie, et doit alors pouvoir écrire dans la base des comptes et dans les
