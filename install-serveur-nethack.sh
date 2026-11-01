@@ -56,7 +56,17 @@ erreur() { printf '\033[1;31m[ERREUR] %s\033[0m\n' "$*" >&2; exit 1; }
 # =============================================================================
 #                         PARTIE 1 : SUR L'HÔTE
 # =============================================================================
+# Vrai si le pare-feu ufw est installé et actif
+ufw_actif() {
+    command -v ufw >/dev/null && ufw status | grep -q "Status: active\|État : actif"
+}
+
 hote() {
+    case "$PORT_SSH" in
+        ''|*[!0-9]*) erreur "PORT_SSH doit être un numéro de port." ;;
+    esac
+    [ "$PORT_SSH" -ge 1 ] && [ "$PORT_SSH" -le 65535 ] || erreur "PORT_SSH hors limites (1-65535)."
+
     etape "LXD"
     if ! snap list lxd >/dev/null 2>&1; then
         info "Installation de LXD ($CANAL_LXD)"
@@ -79,7 +89,7 @@ hote() {
         lxd init --minimal
     fi
 
-    if command -v ufw >/dev/null && ufw status | grep -q "Status: active\|État : actif"; then
+    if ufw_actif; then
         etape "Pare-feu ufw"
         ufw allow in on lxdbr0 >/dev/null
         ufw route allow in on lxdbr0 >/dev/null
@@ -109,9 +119,19 @@ hote() {
         || erreur "Le conteneur n'a pas d'IPv4 (DHCP de lxdbr0 bloqué ? voir pgrep -a dnsmasq)."
     lxc exec "$CONTENEUR" -- cloud-init status --wait >/dev/null 2>&1 || true
 
-    if ! lxc config device show "$CONTENEUR" | grep -q '^ssh-nethack:'; then
+    # Redirection du port : créée, ou mise à jour si PORT_SSH a changé
+    ecoute="tcp:0.0.0.0:$PORT_SSH"
+    ancienne=$(lxc config device get "$CONTENEUR" ssh-nethack listen 2>/dev/null || true)
+    if [ -z "$ancienne" ]; then
         lxc config device add "$CONTENEUR" ssh-nethack proxy \
-            listen=tcp:0.0.0.0:"$PORT_SSH" connect=tcp:127.0.0.1:22
+            listen="$ecoute" connect=tcp:127.0.0.1:22
+    elif [ "$ancienne" != "$ecoute" ]; then
+        lxc config device set "$CONTENEUR" ssh-nethack listen="$ecoute"
+        info "Port changé : ${ancienne##*:} → $PORT_SSH"
+        if ufw_actif; then
+            ufw delete allow "${ancienne##*:}"/tcp >/dev/null 2>&1 || true
+            info "Ancien port ${ancienne##*:} refermé dans ufw"
+        fi
     fi
     info "Port $PORT_SSH de l'hôte → SSH du conteneur"
 

@@ -48,7 +48,7 @@ Le script est **ré-exécutable** : il saute ce qui est déjà fait. Si le chroo
 contient déjà une base de comptes (`dgldir/dgamelaunch.db`), seul le jeu est
 mis à jour ; comptes, sauvegardes, scores et `sysconf` sont conservés.
 Les réglages du script (`PSEUDO_WIZARD`, `NOM_SERVEUR`, `MAX_JOUEURS`,
-`LANGUE`) sont, eux, réappliqués à chaque exécution : il suffit de les
+`LANGUE`, `PORT_SSH`) sont, eux, réappliqués à chaque exécution : il suffit de les
 modifier et de relancer le script.
 
 ## Réglages
@@ -103,7 +103,8 @@ conteneur et se relance avec l'option interne `--conteneur`.
 3. **Conteneur** : le crée (ou le démarre), applique les limites CPU/mémoire,
    attend son IPv4 (2 min max) et la fin de cloud-init.
 4. **Proxy SSH** : device `ssh-nethack` qui relie `0.0.0.0:PORT_SSH` de l'hôte
-   au port 22 du conteneur.
+   au port 22 du conteneur. Si `PORT_SSH` a changé, le device est mis à jour
+   et l'ancien port refermé dans ufw.
 5. **Installation** dans le conteneur (partie 2).
 6. **Fichiers spéciaux** : `/dev/urandom` et `/dev/null` sont fournis au chroot
    via des devices LXD `unix-char` (`mknod` est impossible dans un conteneur
