@@ -387,7 +387,9 @@ compiler_dgamelaunch() {
     # Sources clonées ou mises à jour à chaque exécution
     en_util <<'EOF'
 if [ -d "$SRC_DGL/.git" ]; then
-    git -C "$SRC_DGL" pull --ff-only
+    if ! git -C "$SRC_DGL" pull --ff-only; then
+        printf '\033[1;33m[!] Mise à jour de dgamelaunch impossible (modifications locales en conflit,\n    commits divergents ou réseau) : rien n'"'"'a été écrasé, la version locale est utilisée.\033[0m\n' >&2
+    fi
 else
     git clone "$DEPOT_DGL" "$SRC_DGL"
 fi

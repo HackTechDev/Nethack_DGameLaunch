@@ -148,7 +148,9 @@ conteneur et se relance avec l'option interne `--conteneur`.
    Puis il lance `./.install-serveur.sh --console`. En cas d'échec, Lua est
    nettoyé et la compilation relancée une fois.
 4. **Compilation de dgamelaunch** : les sources sont clonées ou mises à jour
-   (`git pull --ff-only`) à chaque exécution. La compilation n'a lieu que si
+   (`git pull --ff-only`) à chaque exécution. Si la mise à jour échoue
+   (modification locale en conflit, commits divergents, réseau), une alerte
+   l'indique et la version locale est utilisée, comme pour NetHack. La compilation n'a lieu que si
    le binaire manque ou si le commit des sources diffère de celui noté dans
    `/opt/nethack/dgamelaunch.commit` lors de la dernière compilation. Options :
    `--enable-sqlite --enable-shmem`, avec des `CFLAGS` tolérants
