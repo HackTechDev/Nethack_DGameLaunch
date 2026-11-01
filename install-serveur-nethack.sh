@@ -1003,10 +1003,10 @@ Match User nethack
     PermitEmptyPasswords yes
     KbdInteractiveAuthentication no
     PermitTTY yes
-    X11Forwarding no
-    AllowTcpForwarding no
-    AllowAgentForwarding no
+    # Aucune redirection (TCP, sockets Unix, agent, X11) ni ~/.ssh/rc
+    DisableForwarding yes
     PermitTunnel no
+    PermitUserRC no
     ForceCommand /opt/nethack/dgamelaunch -f $CONF
 EOF
     sshd -t

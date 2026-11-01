@@ -249,8 +249,9 @@ conteneur et se relance avec l'option interne `--conteneur`.
    (réécrite à chaque exécution).
 9. **SSH** : compte `nethack` sans mot de passe, et
    `/etc/ssh/sshd_config.d/50-nethack.conf` qui force dgamelaunch
-   (`ForceCommand`) et interdit tunnels, redirections et X11. La configuration
-   est vérifiée par `sshd -t` avant le redémarrage.
+   (`ForceCommand`) et interdit toute redirection (`DisableForwarding` : TCP,
+   sockets Unix, agent, X11), les tunnels et `~/.ssh/rc` (`PermitUserRC no`).
+   La configuration est vérifiée par `sshd -t` avant le redémarrage.
 10. **Entretien quotidien** : script `/usr/local/sbin/nethack-entretien`
     lancé vers 4 h 30 par le timer systemd `nethack-entretien.timer` (rattrapé
     au démarrage s'il a été manqué).
