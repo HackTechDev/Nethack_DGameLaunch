@@ -421,7 +421,7 @@ hote() {
     fi
 
     # Test du chemin réel des joueurs : bannière SSH sur le port public (IPv4,
-    # et IPv6 par ::1 s'il est servi), puis menu de dgamelaunch
+    # et IPv6 par ::1 s'il est servi), puis connexion complète d'un joueur
     etape "Test de l'accès des joueurs"
     if [ "$(banniere_ssh "$ip_hote" "$PORT_SSH")" = "SSH-2.0" ]; then
         info "SSH répond sur $ip_hote:$PORT_SSH"
@@ -435,12 +435,32 @@ hote() {
             alerte "Pas de réponse SSH en IPv6 sur [::1]:$PORT_SSH."
         fi
     fi
-    menu=$(lxc exec "$CONTENEUR" -- env TERM=xterm timeout 5 \
-               script -qec "/opt/nethack/dgamelaunch -f $CONF" /dev/null </dev/null 2>/dev/null || true)
-    if printf '%s' "$menu" | grep -aqF -e "$NOM_SERVEUR"; then
-        info "dgamelaunch affiche son menu (« $NOM_SERVEUR »)"
+    # Connexion complète, comme un joueur : authentification du compte nethack
+    # sans mot de passe, ForceCommand, menu de dgamelaunch. La session est
+    # coupée au bout de 10 s (dgamelaunch attend une touche).
+    connexion=""
+    if command -v ssh >/dev/null; then
+        connexion=$(TERM=xterm timeout 10 ssh -tt -p "$PORT_SSH" -o BatchMode=yes \
+                        -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+                        -o LogLevel=ERROR -o ConnectTimeout=5 "nethack@$ip_hote" \
+                        </dev/null 2>&1 || true)
+    fi
+    if printf '%s' "$connexion" | grep -aqF -e "$NOM_SERVEUR"; then
+        info "Connexion ssh nethack@$ip_hote : menu de dgamelaunch affiché (« $NOM_SERVEUR »)"
     else
-        alerte "dgamelaunch n'affiche pas son menu : tester « lxc exec $CONTENEUR -- /opt/nethack/dgamelaunch -f $CONF »."
+        if command -v ssh >/dev/null; then
+            alerte "La connexion ssh -p $PORT_SSH nethack@$ip_hote n'affiche pas le menu de dgamelaunch."
+        fi
+        # Diagnostic : dgamelaunch lancé directement dans le conteneur
+        menu=$(lxc exec "$CONTENEUR" -- env TERM=xterm timeout 5 \
+                   script -qec "/opt/nethack/dgamelaunch -f $CONF" /dev/null </dev/null 2>/dev/null || true)
+        if ! printf '%s' "$menu" | grep -aqF -e "$NOM_SERVEUR"; then
+            alerte "dgamelaunch n'affiche pas son menu : tester « lxc exec $CONTENEUR -- /opt/nethack/dgamelaunch -f $CONF »."
+        elif command -v ssh >/dev/null; then
+            alerte "dgamelaunch fonctionne dans le conteneur : vérifier sshd (journalctl -u ssh dans le conteneur)."
+        else
+            info "dgamelaunch affiche son menu (« $NOM_SERVEUR ») ; client ssh absent de l'hôte : connexion non testée"
+        fi
     fi
 
     etape "Terminé"

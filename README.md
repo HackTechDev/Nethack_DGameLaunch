@@ -185,9 +185,12 @@ conteneur et se relance avec l'option interne `--conteneur`.
    `chpasswd` par l'entrée standard, donc n'apparaît ni dans `ps` ni dans
    l'historique. S'il manque toujours à la fin, une alerte le rappelle.
 10. **Test de l'accès des joueurs** : bannière SSH sur `adresse:PORT_SSH`
-    (et en IPv6 par `[::1]` quand il est servi), puis affichage du menu de
-    dgamelaunch dans le conteneur. Une alerte indique quoi vérifier en cas
-    d'échec.
+    (et en IPv6 par `[::1]` quand il est servi), puis vraie connexion
+    `ssh -p PORT_SSH nethack@adresse`, comme un joueur (authentification sans
+    mot de passe, `ForceCommand`), qui doit afficher le menu de dgamelaunch ;
+    la session est coupée au bout de 10 s. En cas d'échec, dgamelaunch est
+    lancé directement dans le conteneur pour savoir si le problème vient de
+    lui ou de sshd, et une alerte indique quoi vérifier.
 
 ### Partie 2 — dans le conteneur (`conteneur`)
 
