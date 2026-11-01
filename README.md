@@ -234,11 +234,11 @@ conteneur et se relance avec l'option interne `--conteneur`.
    à la connexion suivante du joueur. Si le code amont change et que le
    correctif ne s'applique plus, le script s'arrête sans rien installer.
    La compilation n'a lieu que si le binaire manque, ou si le commit des
-   sources ou le correctif diffèrent de l'empreinte notée dans
-   `/opt/nethack/dgamelaunch.commit`. Options :
-   `--enable-sqlite --enable-shmem`, avec des `CFLAGS` tolérants
-   (`-std=gnu17 -fcommon`, erreurs GCC 14+ rétrogradées en avertissements) car
-   le code est ancien. Installé setuid root.
+   sources, le correctif ou les options de compilation diffèrent de
+   l'empreinte notée dans `/opt/nethack/dgamelaunch.commit`. Options :
+   `--enable-sqlite --enable-shmem`, `CFLAGS="-O2 -std=gnu17
+   -DNCURSES_WIDECHAR=1"` (le code date d'avant C23, norme par défaut de
+   GCC 15) ; aucune erreur de compilation n'est ignorée. Installé setuid root.
 5. **Chroot** :
    - **première installation** : copie modifiée de `dgl-create-chroot`,
      générée dans `/tmp` et supprimée après usage (l'original et le dépôt de

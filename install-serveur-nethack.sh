@@ -70,6 +70,11 @@ SRC_NH="$HOME_UTIL/Nethack500_Lubuntu2604"
 SRC_DGL="$HOME_UTIL/dgamelaunch"
 CONSTR_DGL="$HOME_UTIL/dgamelaunch-construction"   # copie corrigée, compilée
 CORRECTIF_DGL="/opt/nethack/dgamelaunch-mots-de-passe.patch"
+# Options de compilation de dgamelaunch. -std=gnu17 : le code date d'avant
+# C23, norme par défaut de GCC 15 (il redéclare time() sans paramètres).
+# NCURSES_WIDECHAR : déclare les fonctions ncurses « larges » utilisées par
+# l'éditeur ee. Aucune erreur de compilation n'est ignorée.
+CFLAGS_DGL="-O2 -std=gnu17 -DNCURSES_WIDECHAR=1"
 C="/opt/nethack/chroot"          # racine du chroot
 CONF="/opt/nethack/dgamelaunch.conf"
 COMMIT_DGL="/opt/nethack/dgamelaunch.commit"   # commit de la dernière compilation
@@ -500,7 +505,7 @@ en_util() {
     runuser -u "$UTILISATEUR" -- env HOME="$HOME_UTIL" \
         DEPOT="$DEPOT" BRANCHE="$BRANCHE" DEPOT_DGL="$DEPOT_DGL" \
         SRC_NH="$SRC_NH" SRC_DGL="$SRC_DGL" CONSTR_DGL="$CONSTR_DGL" \
-        CORRECTIF_DGL="$CORRECTIF_DGL" bash -euo pipefail -s
+        CORRECTIF_DGL="$CORRECTIF_DGL" CFLAGS_DGL="$CFLAGS_DGL" bash -euo pipefail -s
 }
 
 paquets() {
@@ -656,10 +661,11 @@ EOF
     mkdir -p /opt/nethack
     correctif_dgamelaunch > "$CORRECTIF_DGL"
     chmod 644 "$CORRECTIF_DGL"
-    # Recompilation si le binaire manque, ou si les sources ou le correctif ont
-    # changé depuis la dernière compilation (empreinte notée dans $COMMIT_DGL)
+    # Recompilation si le binaire manque, ou si les sources, le correctif ou
+    # les options ont changé depuis la dernière compilation (empreinte notée
+    # dans $COMMIT_DGL)
     commit=$(runuser -u "$UTILISATEUR" -- git -C "$SRC_DGL" rev-parse HEAD)
-    empreinte="$commit+$(sha256sum "$CORRECTIF_DGL" | cut -c1-16)"
+    empreinte="$commit+$( { cat "$CORRECTIF_DGL"; echo "$CFLAGS_DGL"; } | sha256sum | cut -c1-16)"
     if [ -x /opt/nethack/dgamelaunch ] && [ -x "$CONSTR_DGL/dgamelaunch" ] \
             && [ "$(cat "$COMMIT_DGL" 2>/dev/null)" = "$empreinte" ]; then
         info "Déjà à jour (commit ${commit:0:12}, correctif des mots de passe appliqué)"
@@ -677,11 +683,7 @@ fi
 patch -p1 --silent < "$CORRECTIF_DGL"
 [ -f Makefile ] && make distclean >/dev/null 2>&1 || true
 ./autogen.sh --enable-sqlite --enable-shmem \
-    --with-config-file=/opt/nethack/dgamelaunch.conf \
-    CFLAGS="-O2 -std=gnu17 -fcommon \
-      -Wno-error=implicit-function-declaration \
-      -Wno-error=incompatible-pointer-types \
-      -Wno-error=int-conversion"
+    --with-config-file=/opt/nethack/dgamelaunch.conf CFLAGS="$CFLAGS_DGL"
 make
 EOF
     # install remplace le fichier (unlink) : sans risque pour les sessions en cours
