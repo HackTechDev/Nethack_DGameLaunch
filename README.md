@@ -97,6 +97,7 @@ Chemins dérivés (dans le conteneur) :
 | `/home/util01/dgamelaunch-construction` | Copie corrigée des sources dgamelaunch, compilée |
 | `/opt/nethack/nethack.version`       | Version du jeu installée dans le chroot |
 | `/opt/nethack/jeu.uid`               | UID sous lequel tournent les parties |
+| `/opt/nethack/wizard.confirme`      | Empreinte du compte du mode debug confirmé par l'admin |
 | `/opt/nethack/nethack.fichiers`     | Liste des fichiers du jeu installés dans le chroot |
 | `/opt/nethack/sauvegardes/`         | Sauvegardes quotidiennes (`nethack-AAAAMMJJ-HHMMSS.tar.gz`) |
 | `/usr/local/sbin/nethack-entretien` | Script d'entretien quotidien (généré) |
@@ -230,8 +231,8 @@ conteneur et se relance avec l'option interne `--conteneur`.
      les mêmes. `rsync` remplace les fichiers par renommage : les parties en
      cours ne sont pas perturbées.
 6. **sysconf** (à chaque exécution) : `WIZARDS=<PSEUDO_WIZARD>` seulement si
-   ce compte existe déjà dans la base dgamelaunch (sinon `WIZARDS=-aucun-`,
-   un nom impossible à inscrire), `CHECK_PLNAME=1`, dumplogs dans `/dgldir/userdata/<pseudo>/dumplog/`,
+   ce compte existe déjà dans la base dgamelaunch et que vous avez confirmé
+   qu'il est le vôtre (sinon `WIZARDS=-aucun-`, un nom impossible à inscrire), `CHECK_PLNAME=1`, dumplogs dans `/dgldir/userdata/<pseudo>/dumplog/`,
    `PANICTRACE_GDB=0`, gdb/grep désactivés. Seules ces clés sont modifiées
    (ligne active, sinon décommentée, sinon ajoutée) ; le reste du fichier est
    conservé.
@@ -279,8 +280,18 @@ sous ce nom et en profiter. Après la première installation :
 
 1. connectez-vous (`ssh -p 2222 nethack@<ip>`) et inscrivez le compte
    `PSEUDO_WIZARD` (`utildebug` par défaut) ;
-2. relancez `sudo ./install-serveur-nethack.sh` : le mode debug est alors
-   activé pour ce compte.
+2. relancez `sudo ./install-serveur-nethack.sh` **dans un terminal** : le
+   script affiche le numéro et le courriel du compte et demande de confirmer
+   que c'est bien le vôtre (quelqu'un a pu l'inscrire avant vous). Si vous
+   répondez non, il donne la commande pour supprimer ce compte.
+
+La confirmation est retenue dans `/opt/nethack/wizard.confirme` sous forme
+d'empreinte du compte (identifiant et haché du mot de passe). Elle est
+redemandée si le compte est réinscrit ou si son mot de passe change (y compris
+une fois, lors du passage automatique des mots de passe à yescrypt).
+
+Pour jouer en mode debug : menu `o` de dgamelaunch, ajoutez
+`OPTIONS=playmode:debug` au fichier d'options, puis lancez une partie.
 
 ### Sauvegardes
 

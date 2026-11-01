@@ -82,6 +82,7 @@ EXCLUS_JEU=(--exclude=/save --exclude=/record --exclude=/logfile
             --exclude='/*_lock' --exclude='/*.[0-9]' --exclude='/*.[0-9][0-9]'
             --exclude='/*.[0-9][0-9][0-9]')
 UID_JEU="/opt/nethack/jeu.uid"   # UID des parties (nom des sauvegardes : <uid><pseudo>)
+WIZARD_CONFIRME="/opt/nethack/wizard.confirme" # « pseudo:empreinte » du compte debug confirmé
 
 etape()  { printf '\n\033[1;32m==> %s\033[0m\n' "$*"; }
 info()   { printf '    %s\n' "$*"; }
@@ -717,10 +718,13 @@ regler_cle() {
     fi
 }
 
-# Vrai si le compte dgamelaunch $1 existe (pseudo déjà validé : lettres et chiffres)
-compte_dgl_existe() {
-    [ "$(sqlite3 "$C/dgldir/dgamelaunch.db" \
-        "SELECT COUNT(*) FROM dglusers WHERE username = '$1';" 2>/dev/null)" = "1" ]
+# Champ $2 (id, email…) du compte dgamelaunch $1 (pseudo déjà validé : lettres
+# et chiffres) ; vide si le compte n'existe pas. Les caractères non imprimables
+# sont retirés : le courriel est saisi par le joueur et affiché à l'admin.
+champ_compte_dgl() {
+    sqlite3 "$C/dgldir/dgamelaunch.db" \
+        "SELECT $2 FROM dglusers WHERE username = '$1';" 2>/dev/null \
+        | head -n 1 | tr -cd '[:print:]'
 }
 
 # sysconf du serveur : appliqué à chaque exécution, sans toucher au reste
@@ -743,13 +747,43 @@ regler_sysconf() {
     fi
     [ "${#PSEUDO_WIZARD}" -le "${maxnick:-10}" ] \
         || erreur "PSEUDO_WIZARD dépasse ${maxnick:-10} caractères : ce compte ne pourrait pas être inscrit."
-    if compte_dgl_existe "$PSEUDO_WIZARD"; then
-        regler_cle "$S" WIZARDS "$PSEUDO_WIZARD"
-        info "Mode debug accordé au compte existant « $PSEUDO_WIZARD »"
-    else
-        regler_cle "$S" WIZARDS "$WIZARD_AUCUN"
+    # Même existant, le compte peut avoir été inscrit par quelqu'un d'autre
+    # avant l'admin : il doit être confirmé une fois dans un terminal. Une
+    # empreinte de son identifiant et de son haché de mot de passe est retenue
+    # (SQLite peut réattribuer l'identifiant d'un compte supprimé) : si le compte
+    # est réinscrit ou son mot de passe changé, la confirmation est redemandée.
+    local id courriel empreinte accorde=0
+    id=$(champ_compte_dgl "$PSEUDO_WIZARD" id)
+    empreinte=$(printf '%s:%s' "$id" "$(champ_compte_dgl "$PSEUDO_WIZARD" password)" \
+                    | sha256sum | cut -c1-32)
+    if [ -z "$id" ]; then
         alerte "Le compte « $PSEUDO_WIZARD » n'existe pas encore : mode debug désactivé."
         alerte "Inscrivez-le vous-même (ssh -p $PORT_SSH nethack@…), puis relancez le script."
+    elif [ "$(cat "$WIZARD_CONFIRME" 2>/dev/null)" = "$PSEUDO_WIZARD:$empreinte" ]; then
+        accorde=1
+    else
+        if grep -q "^$PSEUDO_WIZARD:" "$WIZARD_CONFIRME" 2>/dev/null; then
+            alerte "Le compte « $PSEUDO_WIZARD » a changé depuis sa confirmation (mot de passe"
+            alerte "modifié, ou compte supprimé puis réinscrit) : nouvelle confirmation nécessaire."
+        fi
+        courriel=$(champ_compte_dgl "$PSEUDO_WIZARD" email)
+        alerte "Le compte « $PSEUDO_WIZARD » existe (n° $id, courriel : ${courriel:-aucun})."
+        alerte "Vérifiez que c'est bien vous qui l'avez inscrit avant de lui donner le mode debug."
+        if confirmer "Ce compte est-il le vôtre ?"; then
+            echo "$PSEUDO_WIZARD:$empreinte" > "$WIZARD_CONFIRME"
+            accorde=1
+        elif [ -t 0 ]; then
+            alerte "Mode debug refusé. Si ce compte n'est pas le vôtre, supprimez-le :"
+            alerte "  lxc exec $CONTENEUR -- sqlite3 $C/dgldir/dgamelaunch.db \"DELETE FROM dglusers WHERE id = $id;\""
+        else
+            alerte "Pas de terminal : mode debug non accordé. Relancez le script dans un terminal pour confirmer."
+        fi
+    fi
+    if [ "$accorde" = 1 ]; then
+        regler_cle "$S" WIZARDS "$PSEUDO_WIZARD"
+        info "Mode debug accordé au compte confirmé « $PSEUDO_WIZARD » (n° $id)"
+    else
+        regler_cle "$S" WIZARDS "$WIZARD_AUCUN"
     fi
     regler_cle "$S" CHECK_PLNAME 1
     regler_cle "$S" DUMPLOGFILE /dgldir/userdata/%n/dumplog/%t.txt
