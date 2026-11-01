@@ -63,7 +63,8 @@ Les variables en tête du script :
 | `LIMITE_MEMOIRE`  | `1GiB`                                                  | Mémoire allouée |
 | `PORT_SSH`        | `2222`                                                  | Port de l'hôte ouvert aux joueurs |
 | `CANAL_LXD`       | `6.0/stable`                                            | Canal snap de LXD |
-| `UTILISATEUR`     | `util01`                                                | Compte de compilation / propriétaire du jeu |
+| `UTILISATEUR`     | `util01`                                                | Compte de compilation et d'administration |
+| `COMPTE_JEU`      | `nhjeu`                                                 | Compte système sans connexion sous lequel tournent les parties |
 | `DEPOT`           | `https://github.com/HackTechDev/Nethack500_Lubuntu2604.git` | Sources de NetHack |
 | `BRANCHE`         | `cybernethack`                                          | Branche à compiler |
 | `DEPOT_DGL`       | `https://github.com/paxed/dgamelaunch.git`              | Sources de dgamelaunch |
@@ -83,6 +84,7 @@ Chemins dérivés (dans le conteneur) :
 | `/opt/nethack/dgamelaunch.conf`      | Configuration dgamelaunch |
 | `/opt/nethack/dgamelaunch.commit`    | Commit de la dernière compilation de dgamelaunch |
 | `/opt/nethack/nethack.version`       | Version du jeu installée dans le chroot |
+| `/opt/nethack/jeu.uid`               | UID sous lequel tournent les parties |
 | `/opt/nethack/chroot`                | Chroot des joueurs |
 
 ## Fonctionnement
@@ -116,7 +118,9 @@ conteneur et se relance avec l'option interne `--conteneur`.
 
 1. **Paquets** : `apt full-upgrade`, puis outils de compilation, ncurses,
    SQLite, OpenSSH, rsync…
-2. **Utilisateur** `util01` créé avec mot de passe désactivé (`adduser --disabled-password`).
+2. **Comptes** : `util01` créé avec mot de passe désactivé
+   (`adduser --disabled-password`) ; `nhjeu`, compte système sans connexion
+   ni dossier personnel, pour les parties.
 3. **Compilation de NetHack** (sous `util01`) : clone ou met à jour la
    branche (`git pull --ff-only`). Les fichiers suivis par git ne sont jamais
    modifiés : le script génère à chaque exécution deux copies adaptées,
@@ -184,6 +188,14 @@ conteneur et se relance avec l'option interne `--conteneur`.
 
 ## Administration
 
+### Passage au compte `nhjeu` (installations existantes)
+
+Les versions précédentes faisaient tourner les parties sous `util01`. À la
+première exécution de cette version, et s'il n'y a pas de partie en cours,
+le script passe les parties sous `nhjeu` et renomme les sauvegardes, dont le
+nom commence par l'UID (`1001sam.gz` → `999sam.gz`). S'il y a des parties en
+cours, ce passage est reporté à l'exécution suivante.
+
 ### Activer le mode debug
 
 L'inscription étant ouverte à tous, le mode debug n'est jamais accordé à un
@@ -235,7 +247,13 @@ jamais et ne touche qu'aux lignes `chroot_path`, `shed_uid`, `shed_gid`,
 - **Sécurité** : le compte `nethack` n'a pas de mot de passe, par conception ;
   il est limité à dgamelaunch par `ForceCommand`. Le binaire dgamelaunch est
   setuid root (il fait le `chroot` puis abandonne ses droits vers
-  `shed_uid`/`shed_gid`). Le compte `util01` reste verrouillé tant qu'aucun
+  `shed_uid`/`shed_gid`, ici `nhjeu`). Le binaire du jeu, ses données et
+  `sysconf` appartiennent à root : une partie, même via une faille de
+  NetHack, ne peut ni les modifier ni se donner le mode debug. Le dossier du
+  jeu a le sticky bit (`1775 root:nhjeu`) : `nhjeu` y crée ses fichiers de
+  niveaux et ses os, mais ne peut pas supprimer ni remplacer ceux de root.
+  Seuls les sauvegardes, scores et journaux, `dgldir` et `mail` appartiennent
+  à `nhjeu`. Le compte `util01` reste verrouillé tant qu'aucun
   mot de passe n'a été saisi ; même avec un mot de passe, il ne peut pas se
   connecter en SSH par mot de passe (`PasswordAuthentication no` de l'image
   Ubuntu).

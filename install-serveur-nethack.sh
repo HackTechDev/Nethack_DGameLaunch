@@ -24,6 +24,7 @@ PORT_SSH="2222"                  # port de l'hôte ouvert aux joueurs
 CANAL_LXD="6.0/stable"           # version de LXD à installer
 
 UTILISATEUR="util01"             # compte de compilation dans le conteneur
+COMPTE_JEU="nhjeu"               # compte système sous lequel tournent les parties
 DEPOT="https://github.com/HackTechDev/Nethack500_Lubuntu2604.git"
 BRANCHE="cybernethack"
 DEPOT_DGL="https://github.com/paxed/dgamelaunch.git"
@@ -43,6 +44,7 @@ CONF="/opt/nethack/dgamelaunch.conf"
 COMMIT_DGL="/opt/nethack/dgamelaunch.commit"   # commit de la dernière compilation
 WIZARD_AUCUN="-aucun-"           # valeur de WIZARDS quand le mode debug est désactivé
 VERSION_NH="/opt/nethack/nethack.version"      # version du jeu installée dans le chroot
+UID_JEU="/opt/nethack/jeu.uid"   # UID des parties (nom des sauvegardes : <uid><pseudo>)
 
 etape()  { printf '\n\033[1;32m==> %s\033[0m\n' "$*"; }
 info()   { printf '    %s\n' "$*"; }
@@ -131,12 +133,12 @@ hote() {
     done
 
     etape "Test du jeu dans le chroot"
-    if lxc exec "$CONTENEUR" -- env LANG=C.UTF-8 chroot --userspec="$UTILISATEUR:$UTILISATEUR" \
+    if lxc exec "$CONTENEUR" -- env LANG=C.UTF-8 chroot --userspec="$COMPTE_JEU:$COMPTE_JEU" \
             "$C" "$NH/nethack" --version; then
         info "NetHack démarre dans le chroot."
     else
         alerte "Le test --version a échoué : tester à la main dans le conteneur :"
-        alerte "LANG=C.UTF-8 chroot --userspec=$UTILISATEUR:$UTILISATEUR $C $NH/nethack -u test"
+        alerte "LANG=C.UTF-8 chroot --userspec=$COMPTE_JEU:$COMPTE_JEU $C $NH/nethack -u test"
     fi
 
     mot_de_passe_util
@@ -226,6 +228,13 @@ utilisateur() {
         info "Déjà présent"
     else
         adduser --disabled-password --gecos "" "$UTILISATEUR"
+    fi
+    etape "Compte du jeu $COMPTE_JEU"
+    if id "$COMPTE_JEU" >/dev/null 2>&1; then
+        info "Déjà présent"
+    else
+        useradd --system --user-group --no-create-home --home-dir /nonexistent \
+            --shell /usr/sbin/nologin "$COMPTE_JEU"
     fi
 }
 
@@ -350,7 +359,7 @@ creer_chroot() {
     # (variables modifiées uniquement dans l'en-tête, jusqu'à « END OF CONFIG »)
     sed -e "1,/END OF CONFIG/{
             s|^CHROOT=.*|CHROOT=\"$C/\"|
-            s|^USRGRP=.*|USRGRP=\"$UTILISATEUR:$UTILISATEUR\"|
+            s|^USRGRP=.*|USRGRP=\"$COMPTE_JEU:$COMPTE_JEU\"|
             s|^#\?NETHACKBIN=.*|NETHACKBIN=\"$NH/nethack\"|
             s|^#\?NH_PLAYGROUND_FIXED=.*|NH_PLAYGROUND_FIXED=\"\"|
             s|^NHSUBDIR=.*|NHSUBDIR=\"$NH/\"|
@@ -364,7 +373,6 @@ creer_chroot() {
     # Compléments pour NetHack 5.0
     rsync -a "$NH/" "$C$NH/"
     mkdir -p "$C"/dgldir/{inprogress-nh500,userdata,ttyrec,rcfiles} "$C/mail"
-    chown -R "$UTILISATEUR:$UTILISATEUR" "$C/dgldir" "$C/mail" "$C$HOME_UTIL"
 }
 
 # Bibliothèques et fichiers système du chroot, recopiés à chaque exécution :
@@ -400,8 +408,8 @@ copier_systeme_chroot() {
     fi
     rsync -a /usr/lib/locale/ "$C/usr/lib/locale/"
     rsync -aL /etc/localtime "$C/etc/localtime"
-    grep -E "^(root|$UTILISATEUR):" /etc/passwd > "$C/etc/passwd.nouveau"
-    grep -E "^(root|$UTILISATEUR):" /etc/group  > "$C/etc/group.nouveau"
+    grep -E "^(root|$COMPTE_JEU|$UTILISATEUR):" /etc/passwd > "$C/etc/passwd.nouveau"
+    grep -E "^(root|$COMPTE_JEU|$UTILISATEUR):" /etc/group  > "$C/etc/group.nouveau"
     mv "$C/etc/passwd.nouveau" "$C/etc/passwd"
     mv "$C/etc/group.nouveau" "$C/etc/group"
     info "Bibliothèques, terminfo, locales, fuseau horaire et comptes à jour."
@@ -516,13 +524,78 @@ verifier_mise_a_jour() {
     return 0
 }
 
+# Fichiers modifiables par les parties (le reste du jeu appartient à root)
+est_fichier_variable() {
+    case "$1" in save|record|logfile|xlogfile|livelog|perm) return 0 ;; esac
+    return 1
+}
+
+# Fichiers créés par NetHack pendant les parties : niveaux (<uid><pseudo>.<n>,
+# alock.<n>), os (bon*), verrous (*_lock) et journal des plantages
+est_fichier_de_partie() {
+    case "$1" in *.[0-9]|*.[0-9][0-9]|*.[0-9][0-9][0-9]|bon*|*_lock|paniclog) return 0 ;; esac
+    return 1
+}
+
+# Propriétaires du chroot. Les parties tournent sous $COMPTE_JEU, un compte
+# système sans connexion distinct du compte d'administration $UTILISATEUR.
+# Binaire, données et sysconf appartiennent à root : une partie (même via une
+# faille de NetHack) ne peut ni les modifier ni se donner le mode debug.
+# Le dossier du jeu a le sticky bit : le compte du jeu y crée ses fichiers de
+# niveaux et ses os, mais ne peut pas supprimer ni remplacer ceux de root.
+proprietaires_chroot() {
+    etape "Propriétaires des fichiers du chroot"
+    local J="$C$NH" ancien nouveau f nom
+    nouveau=$(id -u "$COMPTE_JEU")
+    # Versions précédentes du script : parties sous $UTILISATEUR
+    ancien=$(cat "$UID_JEU" 2>/dev/null || id -u "$UTILISATEUR")
+    JEU="$COMPTE_JEU"
+    if [ "$ancien" != "$nouveau" ]; then
+        if [ "$(parties_en_cours)" -gt 0 ]; then
+            # Une partie en cours écrirait sa sauvegarde sous l'ancien UID
+            JEU=$(getent passwd "$ancien" | cut -d: -f1)
+            [ -n "$JEU" ] || erreur "Aucun compte pour l'UID $ancien."
+            alerte "Parties en cours : passage au compte $COMPTE_JEU reporté (parties sous $JEU)."
+        else
+            # Les sauvegardes s'appellent <uid><pseudo> : renommées pour le nouvel UID
+            for f in "$J"/save/"$ancien"*; do
+                [ -e "$f" ] || continue
+                nom=${f##*/}
+                mv -n "$f" "$J/save/$nouveau${nom#"$ancien"}"
+            done
+            info "Parties désormais sous $COMPTE_JEU (UID $nouveau), sauvegardes renommées"
+        fi
+    fi
+
+    chown root:root "$C/home" "$C$HOME_UTIL"
+    chmod 755 "$C/home" "$C$HOME_UTIL"
+    chown root:"$JEU" "$J"
+    chmod 1775 "$J"
+    for f in "$J"/* "$J"/.[!.]*; do
+        [ -e "$f" ] || [ -L "$f" ] || continue
+        nom=${f##*/}
+        if [ "$nom" = archives ]; then
+            chown -R root:root "$f"
+        elif est_fichier_variable "$nom" || est_fichier_de_partie "$nom"; then
+            chown -R "$JEU:$JEU" "$f"        # sauvegardes, scores, niveaux, os…
+        else
+            chown -R -h root:root "$f"       # fichier installé ou ajouté par l'admin
+            chmod -R go-w "$f"
+        fi
+    done
+    chmod 644 "$J/sysconf"
+    chown -R "$JEU:$JEU" "$C/dgldir" "$C/mail"
+
+    [ "$JEU" = "$COMPTE_JEU" ] && echo "$nouveau" > "$UID_JEU"
+    info "Jeu en lecture seule (root), parties sous $JEU"
+}
+
 mettre_a_jour_chroot() {
     etape "Mise à jour du jeu dans le chroot existant"
     rsync -a \
       --exclude save --exclude record --exclude logfile --exclude xlogfile \
       --exclude livelog --exclude perm --exclude sysconf \
       "$NH/" "$C$NH/"
-    chown -R "$UTILISATEUR:$UTILISATEUR" "$C$HOME_UTIL"
     info "Comptes, parties et sysconf conservés (réglages du script réappliqués ensuite)."
 }
 
@@ -550,7 +623,7 @@ configurer_dgamelaunch() {
     # Réglages du script : appliqués à chaque exécution
     case "$NOM_SERVEUR" in *'"'*) erreur "NOM_SERVEUR ne doit pas contenir de guillemet." ;; esac
     case "$MAX_JOUEURS" in ''|*[!0-9]*) erreur "MAX_JOUEURS doit être un nombre." ;; esac
-    U=$(id -u "$UTILISATEUR"); G=$(id -g "$UTILISATEUR")
+    U=$(id -u "$JEU"); G=$(id -g "$JEU")
     sed -i -e "s|^chroot_path = .*|chroot_path = \"$(echapper "$C")/\"|" \
            -e "s|^shed_uid = .*|shed_uid = $U|" \
            -e "s|^shed_gid = .*|shed_gid = $G|" \
@@ -611,6 +684,7 @@ conteneur() {
         version_sources_nh > "$VERSION_NH"
     fi
     copier_systeme_chroot
+    proprietaires_chroot
     regler_sysconf
     configurer_dgamelaunch
     configurer_ssh
