@@ -174,6 +174,13 @@ sauvegardes_sur_hote() {
     info "$SAUVEGARDES_HOTE (hôte) monté sur $SAUVEGARDES (conteneur)"
 }
 
+# Sept premiers caractères envoyés par le serveur SSH sur $1:$2 (« SSH-2.0 »),
+# vide s'il ne répond pas en 5 s
+banniere_ssh() {
+    timeout 5 bash -c 'exec 3<>"/dev/tcp/$1/$2" && head -c 7 <&3' _ "$1" "$2" \
+        2>/dev/null || true
+}
+
 # Vrai si le pare-feu ufw est installé et actif (messages forcés en anglais
 # pour que le test ne dépende pas de la langue du système)
 ufw_actif() {
@@ -335,6 +342,30 @@ hote() {
         ip_hote=${ADRESSE_HOTE:-$(adresse_hote)}
         [ -n "$ip_hote" ] || ip_hote=$(hostname -I | awk '{print $1}')
     fi
+
+    # Test du chemin réel des joueurs : bannière SSH sur le port public (IPv4,
+    # et IPv6 par ::1 s'il est servi), puis menu de dgamelaunch
+    etape "Test de l'accès des joueurs"
+    if [ "$(banniere_ssh "$ip_hote" "$PORT_SSH")" = "SSH-2.0" ]; then
+        info "SSH répond sur $ip_hote:$PORT_SSH"
+    else
+        alerte "Pas de réponse SSH sur $ip_hote:$PORT_SSH : vérifier le pare-feu et « lxc config device show $CONTENEUR »."
+    fi
+    if [ "$IPV6" = oui ] || [ -z "$nat" ]; then
+        if [ "$(banniere_ssh ::1 "$PORT_SSH")" = "SSH-2.0" ]; then
+            info "SSH répond en IPv6 ([::1]:$PORT_SSH)"
+        else
+            alerte "Pas de réponse SSH en IPv6 sur [::1]:$PORT_SSH."
+        fi
+    fi
+    menu=$(lxc exec "$CONTENEUR" -- env TERM=xterm timeout 5 \
+               script -qec "/opt/nethack/dgamelaunch -f $CONF" /dev/null </dev/null 2>/dev/null || true)
+    if printf '%s' "$menu" | grep -aqF -e "$NOM_SERVEUR"; then
+        info "dgamelaunch affiche son menu (« $NOM_SERVEUR »)"
+    else
+        alerte "dgamelaunch n'affiche pas son menu : tester « lxc exec $CONTENEUR -- /opt/nethack/dgamelaunch -f $CONF »."
+    fi
+
     etape "Terminé"
     info "Connexion des joueurs : ssh -p $PORT_SSH nethack@$ip_hote"
     if lxc exec "$CONTENEUR" -- grep -qx "WIZARDS=$PSEUDO_WIZARD" "$C$NH/sysconf"; then

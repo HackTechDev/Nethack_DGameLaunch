@@ -172,6 +172,10 @@ conteneur et se relance avec l'option interne `--conteneur`.
    défini et si le script tourne dans un terminal. Il est transmis à
    `chpasswd` par l'entrée standard, donc n'apparaît ni dans `ps` ni dans
    l'historique. S'il manque toujours à la fin, une alerte le rappelle.
+10. **Test de l'accès des joueurs** : bannière SSH sur `adresse:PORT_SSH`
+    (et en IPv6 par `[::1]` quand il est servi), puis affichage du menu de
+    dgamelaunch dans le conteneur. Une alerte indique quoi vérifier en cas
+    d'échec.
 
 ### Partie 2 — dans le conteneur (`conteneur`)
 
