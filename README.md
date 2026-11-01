@@ -368,7 +368,18 @@ jamais et ne touche qu'aux lignes `chroot_path`, `shed_uid`, `shed_gid`,
   jeu a le sticky bit (`1775 root:nhjeu`) : `nhjeu` y crée ses fichiers de
   niveaux et ses os, mais ne peut pas supprimer ni remplacer ceux de root.
   Seuls les sauvegardes, scores et journaux, `dgldir` et `mail` appartiennent
-  à `nhjeu`. Le compte `util01` reste verrouillé tant qu'aucun
+  à `nhjeu`.
+- **Limite connue : dgamelaunch et NetHack partagent le compte `nhjeu`.**
+  dgamelaunch abandonne ses droits root pour `shed_uid` avant de lancer la
+  partie, et doit alors pouvoir écrire dans la base des comptes et dans les
+  dossiers de tous les joueurs. Une faille de NetHack exploitée en jeu
+  donnerait donc accès à la base (hachés des mots de passe), aux sauvegardes,
+  options et enregistrements des autres joueurs, et aux scores. Elle ne
+  permettrait pas de modifier le jeu, `sysconf` ni le mode debug (root), ni
+  de sortir du chroot. Depuis le correctif des mots de passe, une base volée
+  ne suffit plus à se connecter : il faudrait casser des hachés yescrypt.
+  Séparer les deux comptes demanderait de modifier dgamelaunch en
+  profondeur. Le compte `util01` reste verrouillé tant qu'aucun
   mot de passe n'a été saisi ; même avec un mot de passe, il ne peut pas se
   connecter en SSH par mot de passe (`PasswordAuthentication no` de l'image
   Ubuntu).
