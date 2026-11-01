@@ -186,7 +186,9 @@ conteneur et se relance avec l'option interne `--conteneur`.
 
 1. **Paquets** : `apt full-upgrade` à la première installation seulement
    (réglable par `MAJ_SYSTEME`), puis installation des seuls paquets
-   manquants (`--no-upgrade`) : outils de compilation, ncurses, SQLite,
+   manquants (`--no-upgrade`). S'il n'y a rien à installer ni à mettre à
+   jour, `apt-get update` n'est même pas lancé : relancer le script pour
+   changer un réglage fonctionne aussi sans accès aux dépôts. Paquets : outils de compilation, ncurses, SQLite,
    OpenSSH, rsync, unattended-upgrades. Relancer le script pour changer un
    réglage ne met donc pas tout le système à jour ; les mises à jour de
    sécurité restent appliquées chaque jour par unattended-upgrades. Le chroot

@@ -498,13 +498,26 @@ en_util() {
 paquets() {
     etape "Paquets"
     export DEBIAN_FRONTEND=noninteractive
-    local complet=0
+    local complet=0 p manquants=()
+    local liste=(git gcc make curl gettext libncurses-dev
+                 build-essential autoconf automake bison flex
+                 libsqlite3-dev sqlite3 openssh-server rsync unattended-upgrades)
     case "$MAJ_SYSTEME" in
         toujours) complet=1 ;;
         premiere) [ -e "$SYSTEME_INIT" ] || complet=1 ;;
         jamais)   ;;
         *)        erreur "MAJ_SYSTEME doit valoir premiere, toujours ou jamais." ;;
     esac
+    for p in "${liste[@]}"; do
+        dpkg-query -W -f='${Status}' "$p" 2>/dev/null | grep -q "ok installed" \
+            || manquants+=("$p")
+    done
+    # Rien à installer ni à mettre à jour : pas d'apt-get update, le script
+    # fonctionne alors aussi sans accès aux dépôts
+    if [ "$complet" = 0 ] && [ "${#manquants[@]}" -eq 0 ]; then
+        info "Paquets déjà installés (MAJ_SYSTEME=$MAJ_SYSTEME : pas de mise à jour complète)"
+        return
+    fi
     apt-get -o DPkg::Lock::Timeout=600 update
     if [ "$complet" = 1 ]; then
         apt-get -o DPkg::Lock::Timeout=600 full-upgrade -y
@@ -513,11 +526,10 @@ paquets() {
     else
         info "Pas de mise à jour complète du système (MAJ_SYSTEME=$MAJ_SYSTEME)"
     fi
-    # --no-upgrade : n'installe que les paquets manquants, sans toucher aux autres
-    apt-get -o DPkg::Lock::Timeout=600 install -y --no-upgrade \
-        git gcc make curl gettext libncurses-dev \
-        build-essential autoconf automake bison flex \
-        libsqlite3-dev sqlite3 openssh-server rsync unattended-upgrades
+    if [ "${#manquants[@]}" -gt 0 ]; then
+        # --no-upgrade : n'installe que les paquets manquants, sans toucher aux autres
+        apt-get -o DPkg::Lock::Timeout=600 install -y --no-upgrade "${manquants[@]}"
+    fi
 }
 
 utilisateur() {
