@@ -292,7 +292,10 @@ conteneur et se relance avec l'option interne `--conteneur`.
    `/etc/ssh/sshd_config.d/50-nethack.conf` qui force dgamelaunch
    (`ForceCommand`) et interdit toute redirection (`DisableForwarding` : TCP,
    sockets Unix, agent, X11), les tunnels et `~/.ssh/rc` (`PermitUserRC no`).
-   La configuration est vérifiée par `sshd -t` avant le redémarrage.
+   Pour tous les autres comptes, la connexion par mot de passe est interdite
+   explicitement (`PasswordAuthentication no`, `KbdInteractiveAuthentication
+   no`, `PermitRootLogin prohibit-password`), sans dépendre du réglage de
+   l'image : le port est public. La configuration est vérifiée par `sshd -t` avant le redémarrage.
 10. **Entretien quotidien** : script `/usr/local/sbin/nethack-entretien`
     lancé vers 4 h 30 par le timer systemd `nethack-entretien.timer` (rattrapé
     au démarrage s'il a été manqué).
@@ -415,8 +418,8 @@ jamais et ne touche qu'aux lignes `chroot_path`, `shed_uid`, `shed_gid`,
   Séparer les deux comptes demanderait de modifier dgamelaunch en
   profondeur. Le compte `util01` reste verrouillé tant qu'aucun
   mot de passe n'a été saisi ; même avec un mot de passe, il ne peut pas se
-  connecter en SSH par mot de passe (`PasswordAuthentication no` de l'image
-  Ubuntu).
+  connecter en SSH par mot de passe (`PasswordAuthentication no` dans
+  `50-nethack.conf`).
 - **Réglages du script prioritaires** : à chaque exécution, `WIZARDS` (et
   les autres clés listées plus haut) dans `sysconf`, ainsi que `maxusers` et
   le nom du serveur dans `dgamelaunch.conf`, reprennent les valeurs du

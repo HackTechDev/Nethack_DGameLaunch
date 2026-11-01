@@ -1197,6 +1197,16 @@ configurer_ssh() {
     id nethack >/dev/null 2>&1 || useradd -m -s /bin/sh nethack
     passwd -d nethack >/dev/null
     cat > /etc/ssh/sshd_config.d/50-nethack.conf <<EOF
+# Généré par install-serveur-nethack.sh. Lu avant les autres fichiers de ce
+# dossier : la première valeur lue l'emporte.
+
+# Le port est public : connexion par mot de passe interdite à tous les
+# comptes sauf nethack (plus bas), sans compter sur le réglage de l'image
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PermitEmptyPasswords no
+PermitRootLogin prohibit-password
+
 # Connexions arrivant par la boucle locale (proxy LXD sans NAT) : toutes
 # semblent venir de la même adresse, qui ne doit donc pas être pénalisée,
 # sinon un seul client fautif bloquerait tous les joueurs.
