@@ -215,7 +215,14 @@ hote() {
 
     mot_de_passe_util
 
-    ip_hote=$(hostname -I | awk '{print $1}')
+    # Adresse à donner aux joueurs : celle d'écoute en mode NAT, sinon celle de
+    # la route par défaut (hostname -I peut renvoyer lxdbr0 ou docker0 en premier)
+    if [ -n "$nat" ]; then
+        ip_hote=$ip_ecoute
+    else
+        ip_hote=${ADRESSE_HOTE:-$(adresse_hote)}
+        [ -n "$ip_hote" ] || ip_hote=$(hostname -I | awk '{print $1}')
+    fi
     etape "Terminé"
     info "Connexion des joueurs : ssh -p $PORT_SSH nethack@$ip_hote"
     if lxc exec "$CONTENEUR" -- grep -qx "WIZARDS=$PSEUDO_WIZARD" "$C$NH/sysconf"; then
