@@ -319,8 +319,8 @@ conteneur et se relance avec l'option interne `--conteneur`.
       (copie cohérente par `sqlite3 .backup`), `dgldir` (réglages et dumplogs
       des joueurs), sauvegardes, scores et journaux du jeu, `sysconf`,
       `archives`, `dgamelaunch.conf`, menus, bannière et options par défaut
-      de dgamelaunch, courrier, UID des parties (`jeu.uid`) et confirmation
-      du compte debug (`wizard.confirme`). Les enregistrements de parties n'y
+      de dgamelaunch, courrier, UID des parties (`jeu.uid`), version du jeu
+      (`nethack.version`) et confirmation du compte debug (`wizard.confirme`). Les enregistrements de parties n'y
       sont pas (trop volumineux). `SAUVEGARDES_JOURS` jours sont gardés.
     - **Enregistrements de parties** (ttyrec) : compressés au bout d'un jour,
       sauf ceux des parties encore en cours (même inactives), supprimés au
@@ -412,14 +412,18 @@ Il remplace la base des comptes, les scores, les journaux, `sysconf`,
 les réglages des joueurs, les sauvegardes de parties et le courrier (un
 fichier du même nom est remplacé). Si l'UID de `nhjeu` a changé avec le
 nouveau conteneur, les sauvegardes de parties (`<uid><pseudo>`) sont
-renommées. Le compte du jeu possède `dgldir`, `mail`, `save` et les scores :
+renommées. Si la sauvegarde vient d'une autre version du jeu, ses sauvegardes
+de parties, illisibles par la version actuelle, sont rangées dans
+`archives/version-<version>-restaurees-<date>/`, comme lors d'une mise à jour.
+Le compte du jeu possède `dgldir`, `mail`, `save` et les scores :
 rien n'y est écrit en suivant un lien symbolique. Tout est préparé dans un
 dossier réservé à root (`/opt/nethack/.restauration.*`), puis mis en place par
 renommage, et les liens symboliques contenus dans l'archive sont ignorés. La
 dernière exécution du script d'installation réapplique ses
 réglages (`WIZARDS`, `maxusers`, nom du serveur…) à la configuration restaurée.
-Les archives faites avant cette version ne contiennent ni l'UID du jeu ni les
-menus : un message indique alors comment renommer les sauvegardes de parties.
+Les archives faites avant cette version ne contiennent ni l'UID du jeu, ni sa
+version, ni les menus : un message l'indique (et comment renommer les
+sauvegardes de parties).
 
 ### Commandes utiles
 

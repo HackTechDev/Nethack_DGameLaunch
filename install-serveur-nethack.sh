@@ -1355,6 +1355,7 @@ ALERTE_INSCRIPTIONS=$ALERTE_INSCRIPTIONS
 COMPTES_PRECEDENT="/opt/nethack/comptes.precedent"
 UID_JEU="$UID_JEU"
 WIZARD_CONFIRME="$WIZARD_CONFIRME"
+VERSION_NH="$VERSION_NH"
 EOF
         cat <<'EOF'
 umask 077
@@ -1365,12 +1366,12 @@ trap 'rm -rf "$tmp"' EXIT
 # Sauvegarde : base des comptes (copie cohérente même en cours d'écriture),
 # sauvegardes, scores et journaux du jeu, sysconf, configuration, menus et
 # courrier de dgamelaunch, réglages des joueurs, UID des parties (nom des
-# sauvegardes) et confirmation du compte debug. Les enregistrements de
+# sauvegardes), version du jeu et confirmation du compte debug. Les enregistrements de
 # parties (volumineux) n'y sont pas. Restauration : nethack-restaurer.
 sqlite3 "$C/dgldir/dgamelaunch.db" ".backup '$tmp/dgamelaunch.db'"
 cp "$CONF" "$tmp/"
 extras=(dgamelaunch.db "$(basename "$CONF")")
-for f in "$UID_JEU" "$WIZARD_CONFIRME"; do
+for f in "$UID_JEU" "$WIZARD_CONFIRME" "$VERSION_NH"; do
     if [ -f "$f" ]; then cp "$f" "$tmp/"; extras+=("$(basename "$f")"); fi
 done
 elements=(dgldir)
@@ -1488,6 +1489,7 @@ CONF="$CONF"
 DEST="$SAUVEGARDES"
 UID_JEU="$UID_JEU"
 WIZARD_CONFIRME="$WIZARD_CONFIRME"
+VERSION_NH="$VERSION_NH"
 JEU="$COMPTE_JEU"
 EOF
     cat <<'EOF'
@@ -1550,6 +1552,23 @@ if [ -f "$tmp/jeu.uid" ]; then
 else
     echo "[!] Archive sans UID du jeu : si des parties sauvegardées ne sont pas" >&2
     echo "    retrouvées, renommer $C/$NH/save/<ancien uid><pseudo> en $nouveau<pseudo>." >&2
+fi
+
+# Version du jeu : des sauvegardes de parties d'une autre version ne
+# pourraient pas être chargées. Elles sont alors restaurées dans archives/,
+# comme lors d'une mise à jour du jeu.
+version_archive=$(cat "$tmp/${VERSION_NH##*/}" 2>/dev/null || true)
+version_actuelle=$(cat "$VERSION_NH" 2>/dev/null || true)
+if [ -z "$version_archive" ]; then
+    echo "[!] Archive sans version du jeu : si des parties sauvegardées ne se" >&2
+    echo "    chargent pas, elles viennent d'une autre version (voir archives/)." >&2
+elif [ -n "$version_actuelle" ] && [ "$version_archive" != "$version_actuelle" ] \
+        && [ -n "$(ls -A "$tmp/$NH/save" 2>/dev/null)" ]; then
+    rangement="$tmp/$NH/archives/version-$version_archive-restaurees-$(date +%Y%m%d-%H%M%S)"
+    mkdir -p "$rangement"
+    find "$tmp/$NH/save" -mindepth 1 -maxdepth 1 -exec mv -t "$rangement" {} +
+    echo "[!] Sauvegardes de parties de la version $version_archive (jeu actuel :" >&2
+    echo "    $version_actuelle) : illisibles, rangées dans archives/${rangement##*/}" >&2
 fi
 
 # Mise en place sans jamais suivre un lien symbolique : le compte du jeu
