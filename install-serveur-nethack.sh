@@ -1324,6 +1324,8 @@ SAUVEGARDES_JOURS=$SAUVEGARDES_JOURS
 TTYREC_JOURS=$TTYREC_JOURS
 ALERTE_INSCRIPTIONS=$ALERTE_INSCRIPTIONS
 COMPTES_PRECEDENT="/opt/nethack/comptes.precedent"
+UID_JEU="$UID_JEU"
+WIZARD_CONFIRME="$WIZARD_CONFIRME"
 EOF
         cat <<'EOF'
 umask 077
@@ -1332,18 +1334,27 @@ tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
 # Sauvegarde : base des comptes (copie cohérente même en cours d'écriture),
-# sauvegardes, scores et journaux du jeu, sysconf, configuration et réglages
-# des joueurs. Les enregistrements de parties (volumineux) n'y sont pas.
+# sauvegardes, scores et journaux du jeu, sysconf, configuration, menus et
+# courrier de dgamelaunch, réglages des joueurs, UID des parties (nom des
+# sauvegardes) et confirmation du compte debug. Les enregistrements de
+# parties (volumineux) n'y sont pas. Restauration : nethack-restaurer.
 sqlite3 "$C/dgldir/dgamelaunch.db" ".backup '$tmp/dgamelaunch.db'"
 cp "$CONF" "$tmp/"
+extras=(dgamelaunch.db "$(basename "$CONF")")
+for f in "$UID_JEU" "$WIZARD_CONFIRME"; do
+    if [ -f "$f" ]; then cp "$f" "$tmp/"; extras+=("$(basename "$f")"); fi
+done
 elements=(dgldir)
 for f in save record logfile xlogfile livelog sysconf archives; do
     if [ -e "$C/$NH/$f" ]; then elements+=("$NH/$f"); fi
 done
+for f in "$C"/dgl_menu_*.txt "$C/dgl-banner" "$C"/dgl-default-rcfile.* "$C/mail"; do
+    if [ -e "$f" ]; then elements+=("${f#"$C"/}"); fi
+done
 archive="$DEST/nethack-$(date +%Y%m%d-%H%M%S).tar.gz"
 tar -C "$C" --exclude=dgldir/dgamelaunch.db --exclude='dgldir/userdata/*/ttyrec' \
     --exclude='dgldir/inprogress-*' -czf "$archive.partiel" "${elements[@]}" \
-    -C "$tmp" dgamelaunch.db "$(basename "$CONF")"
+    -C "$tmp" "${extras[@]}"
 mv "$archive.partiel" "$archive"
 find "$DEST" -maxdepth 1 -name 'nethack-*.tar.gz' -mtime +"$SAUVEGARDES_JOURS" -delete
 
@@ -1397,6 +1408,8 @@ exit "$echec"
 EOF
     } > /usr/local/sbin/nethack-entretien
     chmod 755 /usr/local/sbin/nethack-entretien
+    restaurateur > /usr/local/sbin/nethack-restaurer
+    chmod 755 /usr/local/sbin/nethack-restaurer
 
     cat > /etc/systemd/system/nethack-entretien.service <<EOF
 [Unit]
@@ -1428,6 +1441,124 @@ EOF
     else
         info "Enregistrements de parties compressés après 1 jour, jamais supprimés"
     fi
+}
+
+# Script de restauration d'une sauvegarde quotidienne, par exemple après la
+# suppression et la réinstallation du conteneur :
+#     lxc exec nethack -- nethack-restaurer             (liste les sauvegardes)
+#     lxc exec nethack -- nethack-restaurer <archive>
+# puis relancer install-serveur-nethack.sh sur l'hôte (réglages réappliqués).
+restaurateur() {
+    cat <<EOF
+#!/bin/bash
+# Généré par install-serveur-nethack.sh : ne pas modifier, relancer le script.
+set -euo pipefail
+C="$C"
+NH="${NH#/}"
+CONF="$CONF"
+DEST="$SAUVEGARDES"
+UID_JEU="$UID_JEU"
+WIZARD_CONFIRME="$WIZARD_CONFIRME"
+JEU="$COMPTE_JEU"
+EOF
+    cat <<'EOF'
+erreur() { printf '[ERREUR] %s\n' "$*" >&2; exit 1; }
+[ "$(id -u)" -eq 0 ] || erreur "À lancer en root."
+archive=${1:-}
+if [ -z "$archive" ]; then
+    echo "Usage : nethack-restaurer <archive>   (chemin, ou nom d'un fichier de $DEST)"
+    echo "Sauvegardes disponibles (les plus récentes d'abord) :"
+    ls -1t "$DEST"/nethack-*.tar.gz 2>/dev/null | head -n 20 | sed 's|.*/|    |'
+    exit 1
+fi
+case "$archive" in */*) ;; *) archive="$DEST/$archive" ;; esac
+[ -f "$archive" ] || erreur "$archive introuvable."
+[ -f "$C/dgldir/dgamelaunch.db" ] \
+    || erreur "Serveur pas encore installé : lancer d'abord install-serveur-nethack.sh."
+
+# Pas pendant une partie : elle réécrirait sa sauvegarde et les scores
+for f in "$C"/dgldir/inprogress-*/*; do
+    [ -f "$f" ] || continue
+    pid=$(head -n 1 "$f" 2>/dev/null || true)
+    case "$pid" in ''|*[!0-9]*) continue ;; esac
+    if kill -0 "$pid" 2>/dev/null; then
+        erreur "Partie en cours (${f##*/}) : restaurer quand plus personne ne joue."
+    fi
+done
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+tar -C "$tmp" --no-same-owner -xzf "$archive"
+[ -f "$tmp/dgamelaunch.db" ] || erreur "$archive n'est pas une sauvegarde du serveur."
+comptes=$(sqlite3 "$tmp/dgamelaunch.db" "SELECT COUNT(*) FROM dglusers;") \
+    || erreur "Base des comptes de la sauvegarde illisible."
+
+# État actuel sauvegardé d'abord (annulation : restaurer cette archive-là)
+marque="$tmp/.debut"
+touch "$marque"
+/usr/local/sbin/nethack-entretien >/dev/null 2>&1 || true
+avant=$(find "$DEST" -maxdepth 1 -name 'nethack-*.tar.gz' -newer "$marque" | head -n 1)
+[ -n "$avant" ] || erreur "Impossible de sauvegarder l'état actuel : rien n'a été modifié."
+echo "État actuel sauvegardé : ${avant##*/}"
+
+# Sauvegardes de parties nommées <uid><pseudo> : renommées si l'UID du compte
+# du jeu a changé (conteneur réinstallé)
+nouveau=$(id -u "$JEU")
+if [ -f "$tmp/jeu.uid" ]; then
+    ancien=$(cat "$tmp/jeu.uid")
+    if [ "$ancien" != "$nouveau" ] && [ -d "$tmp/$NH/save" ]; then
+        for f in "$tmp/$NH/save/$ancien"*; do
+            [ -e "$f" ] || continue
+            nom=${f##*/}
+            mv -n "$f" "$tmp/$NH/save/$nouveau${nom#"$ancien"}"
+        done
+        echo "Sauvegardes de parties renommées (UID $ancien → $nouveau)"
+    fi
+else
+    echo "[!] Archive sans UID du jeu : si des parties sauvegardées ne sont pas" >&2
+    echo "    retrouvées, renommer $C/$NH/save/<ancien uid><pseudo> en $nouveau<pseudo>." >&2
+fi
+
+# Base des comptes : remplacée d'un bloc (renommage)
+cp "$tmp/dgamelaunch.db" "$C/dgldir/dgamelaunch.db.restauration"
+chown "$JEU:$JEU" "$C/dgldir/dgamelaunch.db.restauration"
+chmod --reference="$C/dgldir/dgamelaunch.db" "$C/dgldir/dgamelaunch.db.restauration"
+mv -f "$C/dgldir/dgamelaunch.db.restauration" "$C/dgldir/dgamelaunch.db"
+# Réglages, dumplogs des joueurs, sauvegardes de parties, courrier : fusionnés
+# (un fichier du même nom est remplacé)
+if [ -d "$tmp/dgldir" ]; then rsync -a "$tmp/dgldir/" "$C/dgldir/"; fi
+chown -R "$JEU:$JEU" "$C/dgldir"
+for d in save archives; do
+    if [ -d "$tmp/$NH/$d" ]; then rsync -a "$tmp/$NH/$d/" "$C/$NH/$d/"; fi
+done
+if [ -d "$tmp/mail" ]; then
+    rsync -a "$tmp/mail/" "$C/mail/"
+    chown -R "$JEU:$JEU" "$C/mail"
+fi
+# Scores et journaux : remplacés
+for f in record logfile xlogfile livelog; do
+    if [ -f "$tmp/$NH/$f" ]; then
+        cp "$tmp/$NH/$f" "$C/$NH/$f"
+        chown "$JEU:$JEU" "$C/$NH/$f"
+    fi
+done
+chown -R "$JEU:$JEU" "$C/$NH/save"
+[ -d "$C/$NH/archives" ] && chown -R root:root "$C/$NH/archives"
+# Fichiers de l'admin (root) : sysconf, configuration, menus, bannière,
+# options par défaut, confirmation du compte debug
+if [ -f "$tmp/$NH/sysconf" ]; then install -o root -g root -m 644 "$tmp/$NH/sysconf" "$C/$NH/sysconf"; fi
+for f in "$tmp"/dgl_menu_*.txt "$tmp/dgl-banner" "$tmp"/dgl-default-rcfile.*; do
+    if [ -f "$f" ]; then install -o root -g root -m 644 "$f" "$C/${f##*/}"; fi
+done
+if [ -f "$tmp/${CONF##*/}" ]; then install -o root -g root -m 644 "$tmp/${CONF##*/}" "$CONF"; fi
+if [ -f "$tmp/${WIZARD_CONFIRME##*/}" ]; then
+    install -o root -g root -m 644 "$tmp/${WIZARD_CONFIRME##*/}" "$WIZARD_CONFIRME"
+fi
+
+echo "Restauré : ${archive##*/} ($comptes comptes)."
+echo "Relancez maintenant install-serveur-nethack.sh sur l'hôte : il réapplique"
+echo "ses réglages (sysconf, dgamelaunch.conf, mode debug) à la configuration restaurée."
+EOF
 }
 
 conteneur() {

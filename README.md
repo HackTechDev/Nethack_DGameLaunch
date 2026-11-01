@@ -116,6 +116,8 @@ Chemins dérivés (dans le conteneur) :
 | `/opt/nethack/nethack.fichiers`     | Liste des fichiers du jeu installés dans le chroot |
 | `/opt/nethack/sauvegardes/`         | Sauvegardes quotidiennes (`nethack-AAAAMMJJ-HHMMSS.tar.gz`) |
 | `/usr/local/sbin/nethack-entretien` | Script d'entretien quotidien (généré) |
+| `/usr/local/sbin/nethack-restaurer` | Restauration d'une sauvegarde quotidienne (généré) |
+| `/usr/local/sbin/nethack-chroot-systeme` | Recopie des bibliothèques et fichiers système dans le chroot (généré, lancé aussi par le crochet APT `/etc/apt/apt.conf.d/90nethack-chroot`) |
 | `/usr/local/sbin/nethack-adresse` (hôte) | Suivi de l'IPv4 de l'hôte en mode NAT (généré, timer `nethack-adresse.timer`) |
 | `/opt/nethack/chroot`                | Chroot des joueurs |
 
@@ -313,7 +315,9 @@ conteneur et se relance avec l'option interne `--conteneur`.
     - **Sauvegarde** dans `/opt/nethack/sauvegardes/` : base des comptes
       (copie cohérente par `sqlite3 .backup`), `dgldir` (réglages et dumplogs
       des joueurs), sauvegardes, scores et journaux du jeu, `sysconf`,
-      `archives` et `dgamelaunch.conf`. Les enregistrements de parties n'y
+      `archives`, `dgamelaunch.conf`, menus, bannière et options par défaut
+      de dgamelaunch, courrier, UID des parties (`jeu.uid`) et confirmation
+      du compte debug (`wizard.confirme`). Les enregistrements de parties n'y
       sont pas (trop volumineux). `SAUVEGARDES_JOURS` jours sont gardés.
     - **Enregistrements de parties** (ttyrec) : compressés au bout d'un jour,
       sauf ceux des parties encore en cours (même inactives), supprimés au
@@ -386,6 +390,29 @@ même à les copier hors de la machine.
 sudo ls -l /var/backups/nethack/
 lxc exec nethack -- nethack-entretien      # sauvegarde immédiate
 ```
+
+### Restaurer une sauvegarde
+
+Par exemple après avoir supprimé le conteneur :
+
+```bash
+sudo ./install-serveur-nethack.sh                  # 1. serveur neuf (base vide)
+lxc exec nethack -- nethack-restaurer              # 2. liste des sauvegardes
+lxc exec nethack -- nethack-restaurer nethack-AAAAMMJJ-HHMMSS.tar.gz
+sudo ./install-serveur-nethack.sh                  # 3. réglages réappliqués
+```
+
+`nethack-restaurer` refuse de travailler pendant une partie et sauvegarde
+d'abord l'état actuel (pour revenir en arrière, restaurer cette archive-là).
+Il remplace la base des comptes, les scores, les journaux, `sysconf`,
+`dgamelaunch.conf`, les menus et la confirmation du compte debug ; il fusionne
+les réglages des joueurs, les sauvegardes de parties et le courrier (un
+fichier du même nom est remplacé). Si l'UID de `nhjeu` a changé avec le
+nouveau conteneur, les sauvegardes de parties (`<uid><pseudo>`) sont
+renommées. La dernière exécution du script d'installation réapplique ses
+réglages (`WIZARDS`, `maxusers`, nom du serveur…) à la configuration restaurée.
+Les archives faites avant cette version ne contiennent ni l'UID du jeu ni les
+menus : un message indique alors comment renommer les sauvegardes de parties.
 
 ### Commandes utiles
 
