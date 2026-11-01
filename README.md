@@ -74,6 +74,7 @@ Les variables en tête du script :
 | `LANGUE`          | `fr@cyber`                                              | Langue par défaut des joueurs (`fr`, `fr@cyber`, `en`) |
 | `NOM_SERVEUR`     | `NetHack 5.0 cybernethack`                              | Nom affiché dans le menu dgamelaunch |
 | `MAX_JOUEURS`     | `50`                                                    | Connexions simultanées maximum |
+| `MAJ_SYSTEME`     | `premiere`                                              | `apt full-upgrade` du conteneur : `premiere` (première installation), `toujours` ou `jamais` |
 
 Chemins dérivés (dans le conteneur) :
 
@@ -131,8 +132,16 @@ conteneur et se relance avec l'option interne `--conteneur`.
 
 ### Partie 2 — dans le conteneur (`conteneur`)
 
-1. **Paquets** : `apt full-upgrade`, puis outils de compilation, ncurses,
-   SQLite, OpenSSH, rsync…
+1. **Paquets** : `apt full-upgrade` à la première installation seulement
+   (réglable par `MAJ_SYSTEME`), puis installation des seuls paquets
+   manquants (`--no-upgrade`) : outils de compilation, ncurses, SQLite,
+   OpenSSH, rsync, unattended-upgrades. Relancer le script pour changer un
+   réglage ne met donc pas tout le système à jour ; les mises à jour de
+   sécurité restent appliquées chaque jour par unattended-upgrades. Le chroot
+   est autonome : ces mises à jour ne le cassent pas, mais ses bibliothèques
+   ne reçoivent les correctifs qu'à la prochaine exécution du script. Sur une
+   installation existante, le premier passage à cette version fait encore une
+   mise à jour complète.
 2. **Comptes** : `util01` créé avec mot de passe désactivé
    (`adduser --disabled-password`) ; `nhjeu`, compte système sans connexion
    ni dossier personnel, pour les parties.

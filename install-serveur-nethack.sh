@@ -37,6 +37,10 @@ PSEUDO_WIZARD="sam"              # pseudo dgamelaunch autorisé en mode debug
 LANGUE="fr@cyber"                # langue par défaut des joueurs (fr, fr@cyber, en)
 NOM_SERVEUR="NetHack 5.0 cybernethack"
 MAX_JOUEURS="50"                 # connexions simultanées maximum
+MAJ_SYSTEME="premiere"           # apt full-upgrade du conteneur : premiere
+                                 # (première installation), toujours ou jamais ;
+                                 # les mises à jour de sécurité restent assurées
+                                 # par unattended-upgrades
 # -----------------------------------------------------------------------------
 
 HOME_UTIL="/home/$UTILISATEUR"
@@ -48,6 +52,7 @@ CONF="/opt/nethack/dgamelaunch.conf"
 COMMIT_DGL="/opt/nethack/dgamelaunch.commit"   # commit de la dernière compilation
 WIZARD_AUCUN="-aucun-"           # valeur de WIZARDS quand le mode debug est désactivé
 VERSION_NH="/opt/nethack/nethack.version"      # version du jeu installée dans le chroot
+SYSTEME_INIT="/opt/nethack/systeme.initialise" # présent après le premier full-upgrade
 UID_JEU="/opt/nethack/jeu.uid"   # UID des parties (nom des sauvegardes : <uid><pseudo>)
 
 etape()  { printf '\n\033[1;32m==> %s\033[0m\n' "$*"; }
@@ -280,12 +285,26 @@ en_util() {
 paquets() {
     etape "Paquets"
     export DEBIAN_FRONTEND=noninteractive
+    local complet=0
+    case "$MAJ_SYSTEME" in
+        toujours) complet=1 ;;
+        premiere) [ -e "$SYSTEME_INIT" ] || complet=1 ;;
+        jamais)   ;;
+        *)        erreur "MAJ_SYSTEME doit valoir premiere, toujours ou jamais." ;;
+    esac
     apt-get -o DPkg::Lock::Timeout=600 update
-    apt-get -o DPkg::Lock::Timeout=600 full-upgrade -y
-    apt-get -o DPkg::Lock::Timeout=600 install -y \
+    if [ "$complet" = 1 ]; then
+        apt-get -o DPkg::Lock::Timeout=600 full-upgrade -y
+        mkdir -p "$(dirname "$SYSTEME_INIT")"
+        date > "$SYSTEME_INIT"
+    else
+        info "Pas de mise à jour complète du système (MAJ_SYSTEME=$MAJ_SYSTEME)"
+    fi
+    # --no-upgrade : n'installe que les paquets manquants, sans toucher aux autres
+    apt-get -o DPkg::Lock::Timeout=600 install -y --no-upgrade \
         git gcc make curl gettext libncurses-dev \
         build-essential autoconf automake bison flex \
-        libsqlite3-dev sqlite3 openssh-server rsync
+        libsqlite3-dev sqlite3 openssh-server rsync unattended-upgrades
 }
 
 utilisateur() {
