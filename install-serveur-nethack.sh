@@ -736,7 +736,11 @@ regler_sysconf() {
         ''|*[!A-Za-z0-9]*) erreur "PSEUDO_WIZARD ne doit contenir que des lettres et des chiffres." ;;
     esac
     # dgamelaunch refuse les pseudos plus longs que maxnicklen (10 par défaut)
-    maxnick=$(sed -n 's/^maxnicklen *= *\([0-9]*\).*/\1/p' "$CONF" 2>/dev/null | head -n 1)
+    # (dgamelaunch.conf n'existe pas encore à la première installation)
+    maxnick=""
+    if [ -f "$CONF" ]; then
+        maxnick=$(sed -n 's/^maxnicklen *= *\([0-9]*\).*/\1/p' "$CONF" | head -n 1)
+    fi
     [ "${#PSEUDO_WIZARD}" -le "${maxnick:-10}" ] \
         || erreur "PSEUDO_WIZARD dépasse ${maxnick:-10} caractères : ce compte ne pourrait pas être inscrit."
     if compte_dgl_existe "$PSEUDO_WIZARD"; then
