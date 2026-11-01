@@ -91,9 +91,10 @@ fixer_ip_conteneur() {
     echo "$actuelle"
 }
 
-# Vrai si le pare-feu ufw est installé et actif
+# Vrai si le pare-feu ufw est installé et actif (messages forcés en anglais
+# pour que le test ne dépende pas de la langue du système)
 ufw_actif() {
-    command -v ufw >/dev/null && ufw status | grep -q "Status: active\|État : actif"
+    command -v ufw >/dev/null && LC_ALL=C LANGUAGE= ufw status | grep -q "^Status: active"
 }
 
 hote() {
