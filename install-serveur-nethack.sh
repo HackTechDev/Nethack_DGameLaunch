@@ -42,6 +42,7 @@ C="/opt/nethack/chroot"          # racine du chroot
 CONF="/opt/nethack/dgamelaunch.conf"
 COMMIT_DGL="/opt/nethack/dgamelaunch.commit"   # commit de la dernière compilation
 WIZARD_AUCUN="-aucun-"           # valeur de WIZARDS quand le mode debug est désactivé
+VERSION_NH="/opt/nethack/nethack.version"      # version du jeu installée dans le chroot
 
 etape()  { printf '\n\033[1;32m==> %s\033[0m\n' "$*"; }
 info()   { printf '    %s\n' "$*"; }
@@ -453,6 +454,68 @@ regler_sysconf() {
     sed -i -e 's|^GDBPATH=|#GDBPATH=|' -e 's|^GREPPATH=|#GREPPATH=|' "$S"
 }
 
+# Demande une confirmation ; « non » sans terminal interactif
+confirmer() {
+    [ -t 0 ] || return 1
+    local reponse
+    read -rp "    $1 (o/N) : " reponse || return 1
+    case "$reponse" in o|O|oui|OUI) return 0 ;; *) return 1 ;; esac
+}
+
+# Version complète des sources (MAJEURE.MINEURE.PATCHLEVEL.EDITLEVEL) : un
+# changement rend les sauvegardes et les os (bones) existants inutilisables
+version_sources_nh() {
+    awk '/^#define[ \t]+(VERSION_MAJOR|VERSION_MINOR|PATCHLEVEL|EDITLEVEL)[ \t]/ {
+             v = v (v == "" ? "" : ".") $3 } END { print v }' \
+        "$SRC_NH/include/patchlevel.h"
+}
+
+# Parties en cours : fichiers de dgamelaunch dont le processus (PID en
+# première ligne) existe encore
+parties_en_cours() {
+    local f pid n=0
+    for f in "$C"/dgldir/inprogress-nh500/*; do
+        [ -f "$f" ] || continue
+        pid=$(head -n 1 "$f" 2>/dev/null || true)
+        case "$pid" in ''|*[!0-9]*) continue ;; esac
+        kill -0 "$pid" 2>/dev/null && n=$((n + 1))
+    done
+    echo "$n"
+}
+
+# Vérifie qu'on peut mettre le jeu à jour dans le chroot sans gêner les
+# joueurs ; met de côté les sauvegardes devenues incompatibles si l'admin
+# l'accepte. Code de retour non nul : mise à jour reportée.
+verifier_mise_a_jour() {
+    local n ancienne nouvelle J="$C$NH" archive
+    n=$(parties_en_cours)
+    if [ "$n" -gt 0 ]; then
+        alerte "$n partie(s) en cours : remplacer le jeu maintenant peut les perturber."
+        if ! confirmer "Mettre à jour quand même ?"; then
+            alerte "Mise à jour du jeu reportée : relancez le script quand plus personne ne joue."
+            return 1
+        fi
+    fi
+
+    nouvelle=$(version_sources_nh)
+    ancienne=$(cat "$VERSION_NH" 2>/dev/null || echo "$nouvelle")
+    if [ "$ancienne" != "$nouvelle" ] \
+            && [ -n "$(ls -A "$J/save" 2>/dev/null)$(ls "$J"/bon* 2>/dev/null)" ]; then
+        alerte "Version du jeu : $ancienne → $nouvelle. Les sauvegardes et les os"
+        alerte "existants ne pourront plus être chargés par la nouvelle version."
+        if ! confirmer "Mettre à jour et archiver les sauvegardes actuelles ?"; then
+            alerte "Mise à jour du jeu reportée : version $ancienne conservée dans le chroot."
+            return 1
+        fi
+        archive="$J/archives/version-$ancienne-$(date +%Y%m%d-%H%M%S)"
+        mkdir -p "$archive"
+        [ -d "$J/save" ] && find "$J/save" -mindepth 1 -maxdepth 1 -exec mv -t "$archive" {} +
+        find "$J" -maxdepth 1 -name 'bon*' -exec mv -t "$archive" {} +
+        info "Sauvegardes et os archivés dans $archive"
+    fi
+    return 0
+}
+
 mettre_a_jour_chroot() {
     etape "Mise à jour du jeu dans le chroot existant"
     rsync -a \
@@ -533,7 +596,10 @@ conteneur() {
     compiler_nethack
     compiler_dgamelaunch
     if [ -e "$C/dgldir/dgamelaunch.db" ]; then
-        mettre_a_jour_chroot
+        if verifier_mise_a_jour; then
+            mettre_a_jour_chroot
+            version_sources_nh > "$VERSION_NH"
+        fi
     else
         if [ -e "$C" ]; then
             # Chroot incomplet ou sans base de comptes : mis de côté, jamais supprimé
@@ -542,6 +608,7 @@ conteneur() {
             mv "$C" "$sauvegarde"
         fi
         creer_chroot
+        version_sources_nh > "$VERSION_NH"
     fi
     copier_systeme_chroot
     regler_sysconf

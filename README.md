@@ -82,6 +82,7 @@ Chemins dérivés (dans le conteneur) :
 | `/opt/nethack/dgamelaunch`           | Binaire dgamelaunch (setuid root) |
 | `/opt/nethack/dgamelaunch.conf`      | Configuration dgamelaunch |
 | `/opt/nethack/dgamelaunch.commit`    | Commit de la dernière compilation de dgamelaunch |
+| `/opt/nethack/nethack.version`       | Version du jeu installée dans le chroot |
 | `/opt/nethack/chroot`                | Chroot des joueurs |
 
 ## Fonctionnement
@@ -139,7 +140,18 @@ conteneur et se relance avec l'option interne `--conteneur`.
      (`dgl-create-chroot.nh500`, l'original reste intact), puis ajout du jeu,
      des dossiers `dgldir/{inprogress-nh500,userdata,ttyrec,rcfiles}` et
      `mail` ;
-   - **mise à jour** : `rsync` du jeu en excluant `save`, `record`,
+   - **mise à jour** : d'abord deux vérifications.
+     - **Parties en cours** (fichiers de `dgldir/inprogress-nh500` dont le
+       processus existe encore) : la mise à jour est reportée, sauf
+       confirmation dans un terminal.
+     - **Changement de version** (`MAJEURE.MINEURE.PATCHLEVEL.EDITLEVEL` de
+       `include/patchlevel.h`, comparée à `/opt/nethack/nethack.version`) :
+       les sauvegardes et les os existants deviendraient illisibles. S'il y en
+       a, la mise à jour est reportée, sauf confirmation dans un terminal ;
+       ils sont alors déplacés dans `archives/version-<ancienne>-<date>/` du
+       dossier du jeu, jamais supprimés.
+
+     Puis `rsync` du jeu en excluant `save`, `record`,
      `logfile`, `xlogfile`, `livelog`, `perm` et `sysconf` ;
    - **dans les deux cas**, fichiers système recopiés depuis le conteneur :
      bibliothèques de NetHack et de dgamelaunch (`ldd` + `libgcc_s`, cherchée
