@@ -7,11 +7,11 @@ conteneur **LXD**, accessible aux joueurs par **SSH**.
 Il automatise le tutoriel `serveur-nethack-cybernethack_v5.md`.
 
 ```
-Joueur ──ssh -p 2222──▶ Hôte ──proxy LXD──▶ Conteneur « nethack » :22
-                                              └─ sshd (compte nethack, sans mot de passe)
-                                                 └─ ForceCommand dgamelaunch
-                                                    └─ chroot /opt/nethack/chroot
-                                                       └─ nethack (fr@cyber)
+Joueur ──ssh -p 2222──▶ Hôte ──proxy LXD (NAT)──▶ Conteneur « nethack » :22
+                                                    └─ sshd (compte nethack, sans mot de passe)
+                                                       └─ ForceCommand dgamelaunch
+                                                          └─ chroot /opt/nethack/chroot
+                                                             └─ nethack sous nhjeu (fr@cyber)
 ```
 
 ## Prérequis
@@ -340,6 +340,6 @@ jamais et ne touche qu'aux lignes `chroot_path`, `shed_uid`, `shed_gid`,
 | Symptôme | Piste |
 |----------|-------|
 | « Le conteneur n'a pas d'IPv4 » | DHCP de `lxdbr0` bloqué : vérifier `pgrep -a dnsmasq` et le pare-feu de l'hôte. |
-| Le test `--version` échoue | Tester à la main : `LANG=C.UTF-8 chroot --userspec=util01:util01 /opt/nethack/chroot /home/util01/nethack500/nethack -u test` |
+| Le test `--version` échoue | Tester à la main : `LANG=C.UTF-8 chroot --userspec=nhjeu:nhjeu /opt/nethack/chroot /home/util01/nethack500/nethack -u test` |
 | Bibliothèque manquante dans le chroot | Comparer `ldd /home/util01/nethack500/nethack` avec le contenu du chroot. |
 | « Des références à 3.4.3 restent » | Corriger à la main `/opt/nethack/dgamelaunch.conf`. |
