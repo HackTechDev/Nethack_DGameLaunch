@@ -1521,6 +1521,10 @@ tar -C "$tmp" --no-same-owner -xzf "$archive"
 [ -f "$tmp/dgamelaunch.db" ] || erreur "$archive n'est pas une sauvegarde du serveur."
 comptes=$(sqlite3 "$tmp/dgamelaunch.db" "SELECT COUNT(*) FROM dglusers;") \
     || erreur "Base des comptes de la sauvegarde illisible."
+# Liens symboliques de l'archive (ni dgamelaunch ni NetHack n'en créent) :
+# supprimés, pour ne jamais recopier ce vers quoi ils pointent
+liens=$(find "$tmp" -type l -print -delete | wc -l)
+[ "$liens" -eq 0 ] || echo "[!] $liens lien(s) symbolique(s) de l'archive ignoré(s)" >&2
 
 # État actuel sauvegardé d'abord (annulation : restaurer cette archive-là)
 marque="$tmp/.debut"
@@ -1548,41 +1552,63 @@ else
     echo "    retrouvées, renommer $C/$NH/save/<ancien uid><pseudo> en $nouveau<pseudo>." >&2
 fi
 
-# Base des comptes : remplacée d'un bloc (renommage)
-cp "$tmp/dgamelaunch.db" "$C/dgldir/dgamelaunch.db.restauration"
-chown "$JEU:$JEU" "$C/dgldir/dgamelaunch.db.restauration"
-chmod --reference="$C/dgldir/dgamelaunch.db" "$C/dgldir/dgamelaunch.db.restauration"
-mv -f "$C/dgldir/dgamelaunch.db.restauration" "$C/dgldir/dgamelaunch.db"
-# Réglages, dumplogs des joueurs, sauvegardes de parties, courrier : fusionnés
-# (un fichier du même nom est remplacé)
-if [ -d "$tmp/dgldir" ]; then rsync -a "$tmp/dgldir/" "$C/dgldir/"; fi
-chown -R "$JEU:$JEU" "$C/dgldir"
-for d in save archives; do
-    if [ -d "$tmp/$NH/$d" ]; then rsync -a "$tmp/$NH/$d/" "$C/$NH/$d/"; fi
-done
-if [ -d "$tmp/mail" ]; then
-    rsync -a "$tmp/mail/" "$C/mail/"
-    chown -R "$JEU:$JEU" "$C/mail"
+# Mise en place sans jamais suivre un lien symbolique : le compte du jeu
+# possède dgldir, mail, save et les scores, et pourrait y placer un lien vers
+# /etc/passwd. Tout est préparé dans un dossier réservé à root, sur le même
+# système de fichiers, puis mis en place par renommage (mv -T remplace un
+# lien, sans le suivre).
+prep=$(mktemp -d /opt/nethack/.restauration.XXXXXX)
+echec_prep() { echo "[!] Restauration interrompue : éléments en attente dans $prep" >&2; }
+trap 'rm -rf "$tmp"; [ ! -d "$prep" ] || echec_prep' EXIT
+
+# Fichier $1 mis à la place de $2, propriétaire $3, droits $4
+placer() {
+    local t="$prep/fichier"
+    cp "$1" "$t"
+    chown "$3" "$t"
+    chmod "$4" "$t"
+    mv -fT "$t" "$2"
+}
+# Dossier $2 fusionné avec $1 (un fichier du même nom est remplacé),
+# propriétaire $3. Le dossier actuel est d'abord retiré de sa place.
+fusionner() {
+    local n="$prep/dossier"
+    if [ -e "$2" ] || [ -L "$2" ]; then mv -T "$2" "$n"; fi
+    if [ -L "$n" ] || { [ -e "$n" ] && [ ! -d "$n" ]; }; then rm -f "$n"; fi
+    [ -d "$n" ] || mkdir -m 755 "$n"
+    if [ -d "$1" ]; then rsync -a "$1/" "$n/"; fi
+    if [ -n "${5:-}" ]; then              # base des comptes ($5) dans dgldir
+        droits=$(stat -c %a "$n/dgamelaunch.db" 2>/dev/null || echo 644)
+        cp "$5" "$n/dgamelaunch.db"
+        chmod "$droits" "$n/dgamelaunch.db"
+    fi
+    chown -R -h "$3" "$n"
+    mv -T "$n" "$2"
+}
+
+# Base des comptes, réglages et dumplogs des joueurs, courrier, sauvegardes
+# de parties, archives : fusionnés
+fusionner "$tmp/dgldir" "$C/dgldir" "$JEU:$JEU" "" "$tmp/dgamelaunch.db"
+fusionner "$tmp/mail" "$C/mail" "$JEU:$JEU"
+fusionner "$tmp/$NH/save" "$C/$NH/save" "$JEU:$JEU"
+if [ -d "$tmp/$NH/archives" ] || [ -e "$C/$NH/archives" ] || [ -L "$C/$NH/archives" ]; then
+    fusionner "$tmp/$NH/archives" "$C/$NH/archives" root:root
 fi
 # Scores et journaux : remplacés
 for f in record logfile xlogfile livelog; do
-    if [ -f "$tmp/$NH/$f" ]; then
-        cp "$tmp/$NH/$f" "$C/$NH/$f"
-        chown "$JEU:$JEU" "$C/$NH/$f"
-    fi
+    if [ -f "$tmp/$NH/$f" ]; then placer "$tmp/$NH/$f" "$C/$NH/$f" "$JEU:$JEU" 644; fi
 done
-chown -R "$JEU:$JEU" "$C/$NH/save"
-[ -d "$C/$NH/archives" ] && chown -R root:root "$C/$NH/archives"
 # Fichiers de l'admin (root) : sysconf, configuration, menus, bannière,
 # options par défaut, confirmation du compte debug
-if [ -f "$tmp/$NH/sysconf" ]; then install -o root -g root -m 644 "$tmp/$NH/sysconf" "$C/$NH/sysconf"; fi
+if [ -f "$tmp/$NH/sysconf" ]; then placer "$tmp/$NH/sysconf" "$C/$NH/sysconf" root:root 644; fi
 for f in "$tmp"/dgl_menu_*.txt "$tmp/dgl-banner" "$tmp"/dgl-default-rcfile.*; do
-    if [ -f "$f" ]; then install -o root -g root -m 644 "$f" "$C/${f##*/}"; fi
+    if [ -f "$f" ]; then placer "$f" "$C/${f##*/}" root:root 644; fi
 done
-if [ -f "$tmp/${CONF##*/}" ]; then install -o root -g root -m 644 "$tmp/${CONF##*/}" "$CONF"; fi
+if [ -f "$tmp/${CONF##*/}" ]; then placer "$tmp/${CONF##*/}" "$CONF" root:root 644; fi
 if [ -f "$tmp/${WIZARD_CONFIRME##*/}" ]; then
-    install -o root -g root -m 644 "$tmp/${WIZARD_CONFIRME##*/}" "$WIZARD_CONFIRME"
+    placer "$tmp/${WIZARD_CONFIRME##*/}" "$WIZARD_CONFIRME" root:root 644
 fi
+rmdir "$prep"
 
 echo "Restauré : ${archive##*/} ($comptes comptes)."
 echo "Relancez maintenant install-serveur-nethack.sh sur l'hôte : il réapplique"

@@ -412,7 +412,11 @@ Il remplace la base des comptes, les scores, les journaux, `sysconf`,
 les réglages des joueurs, les sauvegardes de parties et le courrier (un
 fichier du même nom est remplacé). Si l'UID de `nhjeu` a changé avec le
 nouveau conteneur, les sauvegardes de parties (`<uid><pseudo>`) sont
-renommées. La dernière exécution du script d'installation réapplique ses
+renommées. Le compte du jeu possède `dgldir`, `mail`, `save` et les scores :
+rien n'y est écrit en suivant un lien symbolique. Tout est préparé dans un
+dossier réservé à root (`/opt/nethack/.restauration.*`), puis mis en place par
+renommage, et les liens symboliques contenus dans l'archive sont ignorés. La
+dernière exécution du script d'installation réapplique ses
 réglages (`WIZARDS`, `maxusers`, nom du serveur…) à la configuration restaurée.
 Les archives faites avant cette version ne contiennent ni l'UID du jeu ni les
 menus : un message indique alors comment renommer les sauvegardes de parties.
