@@ -93,6 +93,7 @@ Chemins dérivés (dans le conteneur) :
 | `/opt/nethack/dgamelaunch.commit`    | Commit de la dernière compilation de dgamelaunch |
 | `/opt/nethack/nethack.version`       | Version du jeu installée dans le chroot |
 | `/opt/nethack/jeu.uid`               | UID sous lequel tournent les parties |
+| `/opt/nethack/nethack.fichiers`     | Liste des fichiers du jeu installés dans le chroot |
 | `/opt/nethack/chroot`                | Chroot des joueurs |
 
 ## Fonctionnement
@@ -192,8 +193,16 @@ conteneur et se relance avec l'option interne `--conteneur`.
        ils sont alors déplacés dans `archives/version-<ancienne>-<date>/` du
        dossier du jeu, jamais supprimés.
 
-     Puis `rsync` du jeu en excluant `save`, `record`,
-     `logfile`, `xlogfile`, `livelog`, `perm` et `sysconf` ;
+     Puis `rsync` du jeu ; seuls les fichiers retirés de la nouvelle version
+     (d'après la liste `/opt/nethack/nethack.fichiers`) sont supprimés du
+     chroot, jamais ceux des parties ni ceux ajoutés par l'admin ;
+   - **dans les deux cas**, ne sont jamais recopiés depuis `~/nethack500` :
+     sauvegardes, scores et journaux (`save`, `record`, `logfile`,
+     `xlogfile`, `livelog`, `perm`), `archives`, fichiers laissés par des
+     parties d'essai hors du chroot (niveaux, os, verrous, `paniclog`) et,
+     lors d'une mise à jour, `sysconf`. Les motifs sont ancrés à la racine du
+     dossier du jeu. La copie datée du binaire laissée par `dgl-create-chroot`
+     (`nethack.AAAAMMJJ`) est supprimée ;
    - **dans les deux cas**, fichiers système recopiés depuis le conteneur :
      bibliothèques de NetHack et de dgamelaunch (`ldd` + `libgcc_s`, cherchée
      dans le dossier de l'architecture donné par `gcc -dumpmachine`),

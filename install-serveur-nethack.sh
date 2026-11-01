@@ -61,6 +61,16 @@ COMMIT_DGL="/opt/nethack/dgamelaunch.commit"   # commit de la dernière compilat
 WIZARD_AUCUN="-aucun-"           # valeur de WIZARDS quand le mode debug est désactivé
 VERSION_NH="/opt/nethack/nethack.version"      # version du jeu installée dans le chroot
 SYSTEME_INIT="/opt/nethack/systeme.initialise" # présent après le premier full-upgrade
+MANIFESTE="/opt/nethack/nethack.fichiers"      # fichiers du jeu installés dans le chroot
+
+# Fichiers du dossier du jeu jamais recopiés depuis ~/nethack500 (motifs rsync
+# ancrés à la racine) : fichiers variables du serveur et fichiers créés par les
+# parties d'essai lancées hors du chroot (niveaux, os, verrous, plantages)
+EXCLUS_JEU=(--exclude=/save --exclude=/record --exclude=/logfile
+            --exclude=/xlogfile --exclude=/livelog --exclude=/perm
+            --exclude=/archives --exclude=/paniclog --exclude='/bon*'
+            --exclude='/*_lock' --exclude='/*.[0-9]' --exclude='/*.[0-9][0-9]'
+            --exclude='/*.[0-9][0-9][0-9]')
 UID_JEU="/opt/nethack/jeu.uid"   # UID des parties (nom des sauvegardes : <uid><pseudo>)
 
 etape()  { printf '\n\033[1;32m==> %s\033[0m\n' "$*"; }
@@ -494,9 +504,33 @@ creer_chroot() {
         dgl-create-chroot > dgl-create-chroot.nh500
     sh dgl-create-chroot.nh500
 
-    # Compléments pour NetHack 5.0
-    rsync -a "$NH/" "$C$NH/"
+    # Compléments pour NetHack 5.0 : le jeu, sans les fichiers des parties
+    # d'essai faites hors du chroot ; fichiers variables neufs
+    mkdir -p "$C$NH/save"
+    rsync -a "${EXCLUS_JEU[@]}" "$NH/" "$C$NH/"
+    (cd "$C$NH" && touch record logfile xlogfile livelog perm)
+    nettoyer_binaire_dgl
+    manifeste_jeu > "$MANIFESTE"
     mkdir -p "$C"/dgldir/{inprogress-nh500,userdata,ttyrec,rcfiles} "$C/mail"
+}
+
+# dgl-create-chroot copie le binaire sous nethack.AAAAMMJJ avec un lien
+# « nethack » vers lui ; rsync remplace ensuite ce lien par le vrai binaire et
+# la copie datée ne sert plus
+nettoyer_binaire_dgl() {
+    local f
+    [ -f "$C$NH/nethack" ] && [ ! -L "$C$NH/nethack" ] || return 0
+    for f in "$C$NH"/nethack.[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]; do
+        [ -f "$f" ] || continue
+        rm -f "$f"
+        info "Ancienne copie du binaire supprimée : ${f##*/}"
+    done
+}
+
+# Liste triée des fichiers du jeu installés (chemins relatifs au dossier du jeu)
+manifeste_jeu() {
+    rsync -r --list-only "${EXCLUS_JEU[@]}" --exclude=/sysconf "$NH/" \
+        | awk '$NF != "." { print $NF }' | LC_ALL=C sort
 }
 
 # Bibliothèques et fichiers système du chroot, recopiés à chaque exécution :
@@ -716,10 +750,26 @@ proprietaires_chroot() {
 
 mettre_a_jour_chroot() {
     etape "Mise à jour du jeu dans le chroot existant"
-    rsync -a \
-      --exclude save --exclude record --exclude logfile --exclude xlogfile \
-      --exclude livelog --exclude perm --exclude sysconf \
-      "$NH/" "$C$NH/"
+    local nouveau f
+    rsync -a "${EXCLUS_JEU[@]}" --exclude=/sysconf "$NH/" "$C$NH/"
+    # Fichiers d'une version précédente qui n'existent plus : supprimés, et
+    # seulement eux (pas de rsync --delete, qui effacerait aussi les fichiers
+    # des parties et ceux ajoutés par l'admin)
+    nouveau=$(manifeste_jeu)
+    if [ -f "$MANIFESTE" ]; then
+        LC_ALL=C comm -23 "$MANIFESTE" <(printf '%s\n' "$nouveau") | LC_ALL=C sort -r \
+            | while IFS= read -r f; do
+                  [ -n "$f" ] || continue
+                  if [ -d "$C$NH/$f" ] && [ ! -L "$C$NH/$f" ]; then
+                      rmdir --ignore-fail-on-non-empty "$C$NH/$f"
+                  elif [ -e "$C$NH/$f" ] || [ -L "$C$NH/$f" ]; then
+                      rm -f "$C$NH/$f"
+                      info "Supprimé (absent de la nouvelle version) : $f"
+                  fi
+              done
+    fi
+    printf '%s\n' "$nouveau" > "$MANIFESTE"
+    nettoyer_binaire_dgl
     info "Comptes, parties et sysconf conservés (réglages du script réappliqués ensuite)."
 }
 
