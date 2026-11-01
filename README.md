@@ -318,8 +318,14 @@ conteneur et se relance avec l'option interne `--conteneur`.
       sauf ceux des parties encore en cours (même inactives), supprimés au
       bout de `TTYREC_JOURS` jours (`0` = jamais).
     - **Bilan** : nombre de comptes et place occupée par les données des
-      joueurs, avec une alerte au-delà de 90 % de disque occupé
-      (`journalctl -u nethack-entretien`). dgamelaunch ne limite pas le
+      joueurs. Au-delà de 90 % de disque occupé (pool de stockage LXD,
+      partagé avec les autres conteneurs), le service se termine en échec :
+      il apparaît dans `systemctl --failed` du conteneur, et le script
+      d'installation l'affiche à la fin de chaque exécution
+      (`journalctl -u nethack-entretien`). Aucune limite de taille n'est
+      imposée au disque du conteneur : sur un pool btrfs, un quota atteint
+      bloque toute écriture, y compris celle qui permettrait de le relever
+      (constaté avec LXD 6). dgamelaunch ne limite pas le
       rythme des inscriptions : en cas de vague de comptes indésirables,
       passez `INSCRIPTIONS=non` et relancez le script.
 

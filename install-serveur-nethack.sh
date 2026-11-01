@@ -450,6 +450,10 @@ hote() {
     if [ "$(etat_mot_de_passe)" != "P" ]; then
         alerte "$UTILISATEUR n'a toujours pas de mot de passe : lxc exec $CONTENEUR -- passwd $UTILISATEUR"
     fi
+    if lxc exec "$CONTENEUR" -- systemctl is-failed --quiet nethack-entretien.service; then
+        alerte "Le dernier entretien quotidien a échoué (disque presque plein ?) :"
+        lxc exec "$CONTENEUR" -- journalctl -u nethack-entretien.service -n 5 --no-pager -o cat >&2 || true
+    fi
 }
 
 # État du mot de passe de $UTILISATEUR dans le conteneur :
@@ -1357,12 +1361,15 @@ fi
 echo "Sauvegarde : $archive ($(du -h "$archive" | cut -f1))"
 
 # Bilan : les inscriptions étant ouvertes à tous, une vague de comptes peut
-# remplir la base et le disque. Alerte dans le journal au-delà de 90 %.
+# remplir la base et le disque (le pool de stockage LXD, partagé avec les
+# autres conteneurs). Au-delà de 90 %, le service se termine en échec : il
+# apparaît dans « systemctl --failed » et le script d'installation le signale.
 comptes=$(sqlite3 "$C/dgldir/dgamelaunch.db" "SELECT COUNT(*) FROM dglusers;")
 echo "Comptes : $comptes ; données des joueurs : $(du -sh "$C/dgldir" | cut -f1)"
 occupe=$(df --output=pcent "$C" | tail -n 1 | tr -dc '0-9')
 if [ "$occupe" -ge 90 ]; then
     echo "ALERTE : disque occupé à $occupe % (INSCRIPTIONS=non pour fermer les inscriptions)" >&2
+    exit 1
 fi
 EOF
     } > /usr/local/sbin/nethack-entretien
