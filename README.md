@@ -75,7 +75,7 @@ Les variables en tête du script :
 | `DEPOT`           | `https://github.com/HackTechDev/Nethack500_Lubuntu2604.git` | Sources de NetHack |
 | `BRANCHE`         | `cybernethack`                                          | Branche à compiler |
 | `DEPOT_DGL`       | `https://github.com/paxed/dgamelaunch.git`              | Sources de dgamelaunch |
-| `PSEUDO_WIZARD`   | `sam`                                                   | Seul compte dgamelaunch autorisé en mode debug (`WIZARDS`), une fois inscrit |
+| `PSEUDO_WIZARD`   | `utildebug`                                             | Seul compte dgamelaunch autorisé en mode debug (`WIZARDS`), une fois inscrit ; lettres et chiffres, 10 caractères au plus |
 | `LANGUE`          | `fr@cyber`                                              | Langue par défaut des joueurs (`fr`, `fr@cyber`, `en`) |
 | `NOM_SERVEUR`     | `NetHack 5.0 cybernethack`                              | Nom affiché dans le menu dgamelaunch |
 | `MAX_JOUEURS`     | `50`                                                    | Connexions simultanées maximum |
@@ -254,7 +254,7 @@ conteneur et se relance avec l'option interne `--conteneur`.
 Les versions précédentes faisaient tourner les parties sous `util01`. À la
 première exécution de cette version, et s'il n'y a pas de partie en cours,
 le script passe les parties sous `nhjeu` et renomme les sauvegardes, dont le
-nom commence par l'UID (`1001sam.gz` → `999sam.gz`). S'il y a des parties en
+nom commence par l'UID (`1001toto.gz` → `999toto.gz`). S'il y a des parties en
 cours, ce passage est reporté à l'exécution suivante.
 
 ### Activer le mode debug
@@ -264,7 +264,7 @@ pseudo qui n'existe pas encore : sinon, le premier venu pourrait s'inscrire
 sous ce nom et en profiter. Après la première installation :
 
 1. connectez-vous (`ssh -p 2222 nethack@<ip>`) et inscrivez le compte
-   `PSEUDO_WIZARD` (`sam` par défaut) ;
+   `PSEUDO_WIZARD` (`utildebug` par défaut) ;
 2. relancez `sudo ./install-serveur-nethack.sh` : le mode debug est alors
    activé pour ce compte.
 

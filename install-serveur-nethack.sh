@@ -45,7 +45,8 @@ DEPOT="https://github.com/HackTechDev/Nethack500_Lubuntu2604.git"
 BRANCHE="cybernethack"
 DEPOT_DGL="https://github.com/paxed/dgamelaunch.git"
 
-PSEUDO_WIZARD="sam"              # pseudo dgamelaunch autorisé en mode debug
+PSEUDO_WIZARD="utildebug"        # pseudo dgamelaunch autorisé en mode debug
+                                 # (lettres et chiffres, 10 caractères au plus)
 LANGUE="fr@cyber"                # langue par défaut des joueurs (fr, fr@cyber, en)
 NOM_SERVEUR="NetHack 5.0 cybernethack"
 MAX_JOUEURS="50"                 # connexions simultanées maximum
@@ -618,6 +619,10 @@ regler_sysconf() {
     case "$PSEUDO_WIZARD" in
         ''|*[!A-Za-z0-9]*) erreur "PSEUDO_WIZARD ne doit contenir que des lettres et des chiffres." ;;
     esac
+    # dgamelaunch refuse les pseudos plus longs que maxnicklen (10 par défaut)
+    maxnick=$(sed -n 's/^maxnicklen *= *\([0-9]*\).*/\1/p' "$CONF" 2>/dev/null | head -n 1)
+    [ "${#PSEUDO_WIZARD}" -le "${maxnick:-10}" ] \
+        || erreur "PSEUDO_WIZARD dépasse ${maxnick:-10} caractères : ce compte ne pourrait pas être inscrit."
     if compte_dgl_existe "$PSEUDO_WIZARD"; then
         regler_cle "$S" WIZARDS "$PSEUDO_WIZARD"
         info "Mode debug accordé au compte existant « $PSEUDO_WIZARD »"
