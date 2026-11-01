@@ -129,8 +129,12 @@ conteneur et se relance avec l'option interne `--conteneur`.
    < 5 est mise à jour par paliers (5.0 → 5.21 → `CANAL_LXD`), car les vieux
    LXD bloquent sur AppArmor avec les noyaux récents. Lance
    `lxd init --minimal` si le pont `lxdbr0` n'existe pas.
-2. **ufw** (s'il est actif) : autorise le trafic sur `lxdbr0` et ouvre
-   `PORT_SSH/tcp`.
+2. **ufw** (s'il est actif) : ouvre `PORT_SSH/tcp` et laisse passer le
+   trafic routé par `lxdbr0` (Internet du conteneur, joueurs redirigés en
+   mode NAT). Vers l'hôte lui-même, le conteneur n'atteint que le DHCP
+   (67/udp, 547/udp) et le DNS (53) de `lxdbr0` : même compromis, il ne peut
+   pas joindre les autres services de l'hôte. L'ancienne règle large
+   `allow in on lxdbr0` est retirée.
 3. **Conteneur** : le crée (ou le démarre), applique les limites CPU/mémoire,
    attend son IPv4 (2 min max) et la fin de cloud-init.
 4. **Proxy SSH** : device `ssh-nethack` qui relie `PORT_SSH` de l'hôte au

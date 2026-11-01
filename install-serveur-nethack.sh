@@ -289,11 +289,19 @@ hote() {
 
     if ufw_actif; then
         etape "Pare-feu ufw"
-        ufw allow in on lxdbr0 >/dev/null
+        # Vers l'hôte lui-même, le conteneur n'a besoin que du DHCP (v4, v6)
+        # et du DNS de lxdbr0 : les autres services de l'hôte lui restent
+        # fermés (règle « allow in on lxdbr0 » des versions précédentes retirée)
+        ufw delete allow in on lxdbr0 >/dev/null 2>&1 || true
+        ufw allow in on lxdbr0 to any port 67 proto udp >/dev/null
+        ufw allow in on lxdbr0 to any port 547 proto udp >/dev/null
+        ufw allow in on lxdbr0 to any port 53 >/dev/null
+        # Trafic traversant l'hôte : accès Internet du conteneur et joueurs
+        # redirigés vers lui (mode NAT)
         ufw route allow in on lxdbr0 >/dev/null
         ufw route allow out on lxdbr0 >/dev/null
         ufw allow "$PORT_SSH"/tcp >/dev/null
-        info "lxdbr0 autorisé, port $PORT_SSH ouvert"
+        info "lxdbr0 : DHCP et DNS seulement vers l'hôte ; port $PORT_SSH ouvert"
     fi
 
     etape "Conteneur $CONTENEUR"
