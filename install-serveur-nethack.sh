@@ -62,6 +62,8 @@ HOME_UTIL="/home/$UTILISATEUR"
 NH="$HOME_UTIL/nethack500"       # dossier du jeu (gravé dans le binaire)
 SRC_NH="$HOME_UTIL/Nethack500_Lubuntu2604"
 SRC_DGL="$HOME_UTIL/dgamelaunch"
+CONSTR_DGL="$HOME_UTIL/dgamelaunch-construction"   # copie corrigée, compilée
+CORRECTIF_DGL="/opt/nethack/dgamelaunch-mots-de-passe.patch"
 C="/opt/nethack/chroot"          # racine du chroot
 CONF="/opt/nethack/dgamelaunch.conf"
 COMMIT_DGL="/opt/nethack/dgamelaunch.commit"   # commit de la dernière compilation
@@ -334,7 +336,8 @@ mot_de_passe_util() {
 en_util() {
     runuser -u "$UTILISATEUR" -- env HOME="$HOME_UTIL" \
         DEPOT="$DEPOT" BRANCHE="$BRANCHE" DEPOT_DGL="$DEPOT_DGL" \
-        SRC_NH="$SRC_NH" SRC_DGL="$SRC_DGL" bash -euo pipefail -s
+        SRC_NH="$SRC_NH" SRC_DGL="$SRC_DGL" CONSTR_DGL="$CONSTR_DGL" \
+        CORRECTIF_DGL="$CORRECTIF_DGL" bash -euo pipefail -s
 }
 
 paquets() {
@@ -468,17 +471,30 @@ else
     git clone "$DEPOT_DGL" "$SRC_DGL"
 fi
 EOF
-    # Recompilation si le binaire manque ou si les sources ont changé depuis
-    # la dernière compilation (commit noté dans $COMMIT_DGL)
+    # Correctif de sécurité appliqué à une copie des sources (les sources
+    # clonées ne sont pas modifiées) : voir correctif_dgamelaunch
+    mkdir -p /opt/nethack
+    correctif_dgamelaunch > "$CORRECTIF_DGL"
+    chmod 644 "$CORRECTIF_DGL"
+    # Recompilation si le binaire manque, ou si les sources ou le correctif ont
+    # changé depuis la dernière compilation (empreinte notée dans $COMMIT_DGL)
     commit=$(runuser -u "$UTILISATEUR" -- git -C "$SRC_DGL" rev-parse HEAD)
-    if [ -x /opt/nethack/dgamelaunch ] && [ -f "$COMMIT_DGL" ] \
-            && [ "$(cat "$COMMIT_DGL")" = "$commit" ]; then
-        info "Déjà à jour (commit ${commit:0:12})"
+    empreinte="$commit+$(sha256sum "$CORRECTIF_DGL" | cut -c1-16)"
+    if [ -x /opt/nethack/dgamelaunch ] && [ -x "$CONSTR_DGL/dgamelaunch" ] \
+            && [ "$(cat "$COMMIT_DGL" 2>/dev/null)" = "$empreinte" ]; then
+        info "Déjà à jour (commit ${commit:0:12}, correctif des mots de passe appliqué)"
         return
     fi
-    info "Compilation du commit ${commit:0:12}"
+    info "Compilation du commit ${commit:0:12} avec le correctif des mots de passe"
     en_util <<'EOF'
-cd "$SRC_DGL"
+rsync -a --delete --exclude=.git "$SRC_DGL/" "$CONSTR_DGL/"
+cd "$CONSTR_DGL"
+if ! patch -p1 --dry-run --silent < "$CORRECTIF_DGL" >/dev/null; then
+    echo "Le correctif des mots de passe ne s'applique plus aux sources de dgamelaunch" >&2
+    echo "(code modifié en amont) : rien n'est installé, à adapter dans le script." >&2
+    exit 1
+fi
+patch -p1 --silent < "$CORRECTIF_DGL"
 [ -f Makefile ] && make distclean >/dev/null 2>&1 || true
 ./autogen.sh --enable-sqlite --enable-shmem \
     --with-config-file=/opt/nethack/dgamelaunch.conf \
@@ -488,21 +504,121 @@ cd "$SRC_DGL"
       -Wno-error=int-conversion"
 make
 EOF
-    mkdir -p /opt/nethack
     # install remplace le fichier (unlink) : sans risque pour les sessions en cours
-    install -o root -g root -m 4755 "$SRC_DGL/dgamelaunch" /opt/nethack/
-    echo "$commit" > "$COMMIT_DGL"
+    install -o root -g root -m 4755 "$CONSTR_DGL/dgamelaunch" /opt/nethack/
+    echo "$empreinte" > "$COMMIT_DGL"
+}
+
+# Correctif de dgamelaunch (mots de passe). Sans lui :
+# - le hachage est crypt(mdp, mdp), en DES : 8 caractères utiles, et les deux
+#   premiers caractères du mot de passe, servant de sel, sont stockés en clair ;
+# - le haché stocké est accepté comme mot de passe : lire la base suffit pour
+#   se connecter sous n'importe quel compte.
+# Avec lui : yescrypt (méthode par défaut de libxcrypt) avec sel aléatoire,
+# haché refusé comme mot de passe ; un ancien haché DES est vérifié une
+# dernière fois puis remplacé à la connexion suivante du joueur.
+correctif_dgamelaunch() {
+    cat <<'FIN_CORRECTIF'
+--- a/dgamelaunch.c
++++ b/dgamelaunch.c
+@@ -1485,6 +1485,23 @@
+   }
+ }
+ 
++/* Hachage moderne (méthode par défaut de libxcrypt : yescrypt), sel aléatoire.
++   Remplace crypt(mdp, mdp) : DES, 8 caractères utiles, et les 2 premiers
++   caractères du mot de passe servaient de sel, stocké en clair. */
++static char *
++dgl_hash_password (const char *pw)
++{
++  char *salt, *h;
++
++  salt = crypt_gensalt (NULL, 0, NULL, 0);
++  if (salt == NULL)
++      return NULL;
++  h = crypt (pw, salt);
++  if (h == NULL || h[0] == '*')
++      return NULL;
++  return strdup (h);
++}
++
+ int
+ changepw (int dowrite)
+ {
+@@ -1553,8 +1570,15 @@
+         error = 1;
+     }
+ 
+-  free(me->password);
+-  me->password = strdup (crypt (buf, buf));
++  {
++    char *h = dgl_hash_password (buf);
++    if (h == NULL) {
++	debug_write("password hashing failed");
++	graceful_exit (113);
++    }
++    free(me->password);
++    me->password = h;
++  }
+ 
+   if (dowrite)
+     writefile (0);
+@@ -2048,21 +2072,35 @@
+ 
+ /* ************************************************************* */
+ 
++/* Vérifie le mot de passe. Le haché stocké n'est plus accepté comme mot de
++   passe (l'ancien code le permettait : lire la base suffisait pour se
++   connecter sous n'importe quel compte). Un ancien haché DES est encore
++   vérifié, puis remplacé aussitôt par un haché moderne. */
+ int
+ passwordgood (char *cpw)
+ {
+-  char *crypted;
++  char *crypted, *h;
+   assert (me != NULL);
+ 
+-  crypted = crypt (cpw, cpw);
+-  if (crypted == NULL)
++  if (me->password == NULL || me->password[0] == '\0')
+       return 0;
+-  if (!strncmp (crypted, me->password, DGL_PASSWDLEN))
+-    return 1;
+-  if (!strncmp (cpw, me->password, DGL_PASSWDLEN))
+-    return 1;
+ 
+-  return 0;
++  if (me->password[0] == '$') {
++      crypted = crypt (cpw, me->password);
++      return (crypted != NULL && crypted[0] != '*'
++	      && !strcmp (crypted, me->password));
++  }
++
++  crypted = crypt (cpw, cpw);
++  if (crypted == NULL || crypted[0] == '*' || strcmp (crypted, me->password))
++      return 0;
++  h = dgl_hash_password (cpw);
++  if (h != NULL) {
++      free (me->password);
++      me->password = h;
++      writefile (0);
++  }
++  return 1;
+ }
+ 
+ /* ************************************************************* */
+FIN_CORRECTIF
 }
 
 creer_chroot() {
     etape "Chroot $C"
-    cd "$SRC_DGL"
+    cd "$CONSTR_DGL"      # contient le binaire compilé, utilisé par dgl-create-chroot
     # Copie adaptée du script d'origine, générée hors du dépôt de $UTILISATEUR
     # (variables modifiées uniquement dans l'en-tête, jusqu'à « END OF CONFIG »).
     # Il doit être lancé depuis le dossier des sources (il utilise pwd).
     local script_chroot
     script_chroot=$(mktemp /tmp/dgl-create-chroot.XXXXXX)
-    rm -f dgl-create-chroot.nh500    # laissé là par les versions précédentes
+    rm -f "$SRC_DGL/dgl-create-chroot.nh500"    # laissé là par les versions précédentes
     sed -e "1,/END OF CONFIG/{
             s|^CHROOT=.*|CHROOT=\"$C/\"|
             s|^USRGRP=.*|USRGRP=\"$COMPTE_JEU:$COMPTE_JEU\"|
@@ -796,7 +912,7 @@ configurer_dgamelaunch() {
         info "$CONF existe déjà : conservé, seuls les réglages du script sont réappliqués"
     else
         # Création à partir de l'exemple (une seule fois)
-        cd "$SRC_DGL"
+        cd "$CONSTR_DGL"
         cp examples/dgamelaunch.conf "$CONF"
         cp examples/dgl_menu_*.txt examples/dgl-banner "$C/" 2>/dev/null || true
         sed -i -e "s|/nh343/nethack|$NH/nethack|g" \

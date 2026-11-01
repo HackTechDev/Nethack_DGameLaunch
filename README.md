@@ -92,7 +92,9 @@ Chemins dérivés (dans le conteneur) :
 | `/home/util01/dgamelaunch`           | Sources dgamelaunch |
 | `/opt/nethack/dgamelaunch`           | Binaire dgamelaunch (setuid root) |
 | `/opt/nethack/dgamelaunch.conf`      | Configuration dgamelaunch |
-| `/opt/nethack/dgamelaunch.commit`    | Commit de la dernière compilation de dgamelaunch |
+| `/opt/nethack/dgamelaunch.commit`    | Empreinte (commit + correctif) de la dernière compilation de dgamelaunch |
+| `/opt/nethack/dgamelaunch-mots-de-passe.patch` | Correctif de sécurité appliqué à dgamelaunch |
+| `/home/util01/dgamelaunch-construction` | Copie corrigée des sources dgamelaunch, compilée |
 | `/opt/nethack/nethack.version`       | Version du jeu installée dans le chroot |
 | `/opt/nethack/jeu.uid`               | UID sous lequel tournent les parties |
 | `/opt/nethack/nethack.fichiers`     | Liste des fichiers du jeu installés dans le chroot |
@@ -175,9 +177,21 @@ conteneur et se relance avec l'option interne `--conteneur`.
 4. **Compilation de dgamelaunch** : les sources sont clonées ou mises à jour
    (`git pull --ff-only`) à chaque exécution. Si la mise à jour échoue
    (modification locale en conflit, commits divergents, réseau), une alerte
-   l'indique et la version locale est utilisée, comme pour NetHack. La compilation n'a lieu que si
-   le binaire manque ou si le commit des sources diffère de celui noté dans
-   `/opt/nethack/dgamelaunch.commit` lors de la dernière compilation. Options :
+   l'indique et la version locale est utilisée, comme pour NetHack.
+   La compilation se fait dans une copie, `~/dgamelaunch-construction`, à
+   laquelle est appliqué un **correctif de sécurité des mots de passe**
+   (enregistré dans `/opt/nethack/dgamelaunch-mots-de-passe.patch`) ; les
+   sources clonées ne sont pas modifiées. Sans lui, dgamelaunch hache les
+   mots de passe en DES par `crypt(mdp, mdp)` (8 caractères utiles, les deux
+   premiers stockés en clair comme sel) et accepte le haché stocké comme mot
+   de passe : lire la base suffit pour se connecter sous n'importe quel
+   compte. Avec lui : yescrypt avec sel aléatoire, haché refusé comme mot de
+   passe ; un ancien mot de passe est vérifié une dernière fois puis re-haché
+   à la connexion suivante du joueur. Si le code amont change et que le
+   correctif ne s'applique plus, le script s'arrête sans rien installer.
+   La compilation n'a lieu que si le binaire manque, ou si le commit des
+   sources ou le correctif diffèrent de l'empreinte notée dans
+   `/opt/nethack/dgamelaunch.commit`. Options :
    `--enable-sqlite --enable-shmem`, avec des `CFLAGS` tolérants
    (`-std=gnu17 -fcommon`, erreurs GCC 14+ rétrogradées en avertissements) car
    le code est ancien. Installé setuid root.
