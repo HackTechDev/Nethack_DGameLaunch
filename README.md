@@ -182,8 +182,9 @@ conteneur et se relance avec l'option interne `--conteneur`.
    (`-std=gnu17 -fcommon`, erreurs GCC 14+ rétrogradées en avertissements) car
    le code est ancien. Installé setuid root.
 5. **Chroot** :
-   - **première installation** : copie modifiée de `dgl-create-chroot`
-     (`dgl-create-chroot.nh500`, l'original reste intact), puis ajout du jeu,
+   - **première installation** : copie modifiée de `dgl-create-chroot`,
+     générée dans `/tmp` et supprimée après usage (l'original et le dépôt de
+     `util01` restent intacts), puis ajout du jeu,
      des dossiers `dgldir/{inprogress-nh500,userdata,ttyrec,rcfiles}` et
      `mail` ;
    - **mise à jour** : d'abord deux vérifications.

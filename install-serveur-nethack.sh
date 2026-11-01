@@ -492,8 +492,12 @@ EOF
 creer_chroot() {
     etape "Chroot $C"
     cd "$SRC_DGL"
-    # Copie adaptée du script d'origine (laissé intact dans le dépôt)
-    # (variables modifiées uniquement dans l'en-tête, jusqu'à « END OF CONFIG »)
+    # Copie adaptée du script d'origine, générée hors du dépôt de $UTILISATEUR
+    # (variables modifiées uniquement dans l'en-tête, jusqu'à « END OF CONFIG »).
+    # Il doit être lancé depuis le dossier des sources (il utilise pwd).
+    local script_chroot
+    script_chroot=$(mktemp /tmp/dgl-create-chroot.XXXXXX)
+    rm -f dgl-create-chroot.nh500    # laissé là par les versions précédentes
     sed -e "1,/END OF CONFIG/{
             s|^CHROOT=.*|CHROOT=\"$C/\"|
             s|^USRGRP=.*|USRGRP=\"$COMPTE_JEU:$COMPTE_JEU\"|
@@ -504,8 +508,9 @@ creer_chroot() {
         }" \
         -e 's|^mknod urandom c 1 9$|: # urandom fourni par LXD (unix-char)|' \
         -e 's|^mkdir "\$CHROOT/\$NHSUBDIR"$|mkdir -p "$CHROOT/$NHSUBDIR"|' \
-        dgl-create-chroot > dgl-create-chroot.nh500
-    sh dgl-create-chroot.nh500
+        dgl-create-chroot > "$script_chroot"
+    sh "$script_chroot"
+    rm -f "$script_chroot"
 
     # Compléments pour NetHack 5.0 : le jeu, sans les fichiers des parties
     # d'essai faites hors du chroot ; fichiers variables neufs
