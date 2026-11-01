@@ -21,6 +21,10 @@ IMAGE="ubuntu:26.04"             # image du conteneur
 LIMITE_CPU="2"                   # processeurs alloués
 LIMITE_MEMOIRE="1GiB"            # mémoire allouée
 PORT_SSH="2222"                  # port de l'hôte ouvert aux joueurs
+NAT_PROXY="oui"                  # oui : sshd voit l'adresse réelle des joueurs
+                                 # (IPv4 fixe pour le conteneur) ; non : tous
+                                 # les joueurs semblent venir de 127.0.0.1
+ADRESSE_HOTE=""                  # IPv4 de l'hôte où écouter (vide = automatique)
 CANAL_LXD="6.0/stable"           # version de LXD à installer
 
 UTILISATEUR="util01"             # compte de compilation dans le conteneur
@@ -56,6 +60,32 @@ erreur() { printf '\033[1;31m[ERREUR] %s\033[0m\n' "$*" >&2; exit 1; }
 # =============================================================================
 #                         PARTIE 1 : SUR L'HÔTE
 # =============================================================================
+# IPv4 principale de l'hôte (celle de la route par défaut)
+adresse_hote() {
+    ip -4 route get 1.1.1.1 2>/dev/null \
+        | awk '{ for (i = 1; i < NF; i++) if ($i == "src") { print $(i + 1); exit } }'
+}
+
+# Fixe l'IPv4 du conteneur (indispensable au mode NAT du proxy) ; affiche l'adresse
+fixer_ip_conteneur() {
+    local fixe actuelle
+    fixe=$(lxc config device get "$CONTENEUR" eth0 ipv4.address 2>/dev/null || true)
+    if [ -n "$fixe" ]; then
+        echo "$fixe"
+        return
+    fi
+    actuelle=$(lxc exec "$CONTENEUR" -- ip -4 -o addr show eth0 \
+                   | awk '{ sub("/.*", "", $4); print $4; exit }')
+    [ -n "$actuelle" ] || erreur "IPv4 du conteneur introuvable."
+    if lxc config device show "$CONTENEUR" | grep -q '^eth0:'; then
+        lxc config device set "$CONTENEUR" eth0 ipv4.address="$actuelle" >&2
+    else
+        # eth0 vient du profil : surchargé pour ce conteneur seulement
+        lxc config device override "$CONTENEUR" eth0 ipv4.address="$actuelle" >&2
+    fi
+    echo "$actuelle"
+}
+
 # Vrai si le pare-feu ufw est installé et actif
 ufw_actif() {
     command -v ufw >/dev/null && ufw status | grep -q "Status: active\|État : actif"
@@ -119,21 +149,37 @@ hote() {
         || erreur "Le conteneur n'a pas d'IPv4 (DHCP de lxdbr0 bloqué ? voir pgrep -a dnsmasq)."
     lxc exec "$CONTENEUR" -- cloud-init status --wait >/dev/null 2>&1 || true
 
-    # Redirection du port : créée, ou mise à jour si PORT_SSH a changé
-    ecoute="tcp:0.0.0.0:$PORT_SSH"
+    # Redirection du port vers le SSH du conteneur. En mode NAT, sshd voit
+    # l'adresse réelle des joueurs (pénalités et limites par adresse
+    # efficaces) ; LXD impose alors une adresse d'écoute précise et une IPv4
+    # fixe pour le conteneur.
+    case "$NAT_PROXY" in
+        oui)
+            ip_ecoute=${ADRESSE_HOTE:-$(adresse_hote)}
+            [ -n "$ip_ecoute" ] || erreur "IPv4 de l'hôte introuvable : renseigner ADRESSE_HOTE."
+            ip_conteneur=$(fixer_ip_conteneur)
+            ecoute="tcp:$ip_ecoute:$PORT_SSH"; cible="tcp:$ip_conteneur:22"; nat="true" ;;
+        non)
+            ecoute="tcp:0.0.0.0:$PORT_SSH"; cible="tcp:127.0.0.1:22"; nat="" ;;
+        *)  erreur "NAT_PROXY doit valoir oui ou non." ;;
+    esac
     ancienne=$(lxc config device get "$CONTENEUR" ssh-nethack listen 2>/dev/null || true)
-    if [ -z "$ancienne" ]; then
+    ancienne_cible=$(lxc config device get "$CONTENEUR" ssh-nethack connect 2>/dev/null || true)
+    ancien_nat=$(lxc config device get "$CONTENEUR" ssh-nethack nat 2>/dev/null || true)
+    [ "$ancien_nat" = "false" ] && ancien_nat=""
+    if [ "$ancienne $ancienne_cible $ancien_nat" != "$ecoute $cible $nat" ]; then
+        [ -n "$ancienne" ] && lxc config device remove "$CONTENEUR" ssh-nethack >/dev/null
         lxc config device add "$CONTENEUR" ssh-nethack proxy \
-            listen="$ecoute" connect=tcp:127.0.0.1:22
-    elif [ "$ancienne" != "$ecoute" ]; then
-        lxc config device set "$CONTENEUR" ssh-nethack listen="$ecoute"
-        info "Port changé : ${ancienne##*:} → $PORT_SSH"
-        if ufw_actif; then
+            listen="$ecoute" connect="$cible" ${nat:+nat=true} >/dev/null
+        if [ -n "$ancienne" ] && [ "${ancienne##*:}" != "$PORT_SSH" ] && ufw_actif; then
             ufw delete allow "${ancienne##*:}"/tcp >/dev/null 2>&1 || true
             info "Ancien port ${ancienne##*:} refermé dans ufw"
         fi
     fi
-    info "Port $PORT_SSH de l'hôte → SSH du conteneur"
+    info "${ecoute#tcp:} (hôte) → ${cible#tcp:} (SSH du conteneur)${nat:+, mode NAT}"
+    if [ -n "$nat" ] && [ -z "$ADRESSE_HOTE" ]; then
+        info "Si l'IPv4 de l'hôte change, relancer le script (ou fixer ADRESSE_HOTE)."
+    fi
 
     etape "Installation dans le conteneur"
     lxc file push "$0" "$CONTENEUR/root/install-serveur-nethack.sh" --mode=0755
@@ -668,6 +714,11 @@ configurer_ssh() {
     id nethack >/dev/null 2>&1 || useradd -m -s /bin/sh nethack
     passwd -d nethack >/dev/null
     cat > /etc/ssh/sshd_config.d/50-nethack.conf <<EOF
+# Connexions arrivant par la boucle locale (proxy LXD sans NAT) : toutes
+# semblent venir de la même adresse, qui ne doit donc pas être pénalisée,
+# sinon un seul client fautif bloquerait tous les joueurs.
+PerSourcePenaltyExemptList 127.0.0.1/32,::1/128
+
 Match User nethack
     PasswordAuthentication yes
     PermitEmptyPasswords yes

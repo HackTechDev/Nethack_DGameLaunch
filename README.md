@@ -62,6 +62,8 @@ Les variables en tête du script :
 | `LIMITE_CPU`      | `2`                                                     | Processeurs alloués |
 | `LIMITE_MEMOIRE`  | `1GiB`                                                  | Mémoire allouée |
 | `PORT_SSH`        | `2222`                                                  | Port de l'hôte ouvert aux joueurs |
+| `NAT_PROXY`       | `oui`                                                   | `oui` : sshd voit l'adresse réelle des joueurs (IPv4 fixe pour le conteneur) ; `non` : tous semblent venir de `127.0.0.1` |
+| `ADRESSE_HOTE`    | *(vide)*                                                | IPv4 de l'hôte où écouter en mode NAT (vide = celle de la route par défaut) |
 | `CANAL_LXD`       | `6.0/stable`                                            | Canal snap de LXD |
 | `UTILISATEUR`     | `util01`                                                | Compte de compilation et d'administration |
 | `COMPTE_JEU`      | `nhjeu`                                                 | Compte système sans connexion sous lequel tournent les parties |
@@ -102,9 +104,21 @@ conteneur et se relance avec l'option interne `--conteneur`.
    `PORT_SSH/tcp`.
 3. **Conteneur** : le crée (ou le démarre), applique les limites CPU/mémoire,
    attend son IPv4 (2 min max) et la fin de cloud-init.
-4. **Proxy SSH** : device `ssh-nethack` qui relie `0.0.0.0:PORT_SSH` de l'hôte
-   au port 22 du conteneur. Si `PORT_SSH` a changé, le device est mis à jour
-   et l'ancien port refermé dans ufw.
+4. **Proxy SSH** : device `ssh-nethack` qui relie `PORT_SSH` de l'hôte au
+   port 22 du conteneur.
+   - **Mode NAT** (`NAT_PROXY=oui`, par défaut) : sshd voit l'adresse réelle
+     des joueurs, donc les pénalités par adresse d'OpenSSH
+     (`PerSourcePenalties`) et les limites visent le seul fautif. LXD impose
+     une adresse d'écoute précise (`ADRESSE_HOTE`, ou celle de la route par
+     défaut) et une IPv4 fixe pour le conteneur : son adresse actuelle est
+     fixée sur `eth0`. Si l'IPv4 de l'hôte change, relancez le script.
+   - **Sans NAT** : écoute sur `0.0.0.0`, tous les joueurs semblent venir de
+     `127.0.0.1` ; cette adresse est donc exemptée des pénalités
+     (`PerSourcePenaltyExemptList`), sinon un seul client fautif bloquerait
+     tout le monde.
+
+   Si un de ces réglages ou `PORT_SSH` change, le device est recréé et
+   l'ancien port refermé dans ufw.
 5. **Installation** dans le conteneur (partie 2).
 6. **Fichiers spéciaux** : `/dev/urandom` et `/dev/null` sont fournis au chroot
    via des devices LXD `unix-char` (`mknod` est impossible dans un conteneur
