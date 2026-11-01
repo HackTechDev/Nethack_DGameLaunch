@@ -181,6 +181,12 @@ ufw_actif() {
 }
 
 hote() {
+    # lxc exec n'ouvre un terminal dans le conteneur que si l'entrée et la
+    # sortie en sont un : avec « | tee », les questions y reçoivent « non »
+    if [ -t 0 ] && [ ! -t 1 ]; then
+        alerte "Sortie redirigée : les questions posées dans le conteneur recevront « non »."
+        alerte "Pour garder une trace avec les questions : script -q install.log -c \"sudo $0\""
+    fi
     if [ -z "$SCRIPT" ] || [ ! -f "$SCRIPT" ] || ! grep -q '^conteneur() {' "$SCRIPT"; then
         erreur "Lancer le script depuis son fichier (sudo ./install-serveur-nethack.sh), pas par un tube."
     fi
@@ -832,7 +838,7 @@ regler_sysconf() {
             alerte "Mode debug refusé. Si ce compte n'est pas le vôtre, supprimez-le :"
             alerte "  lxc exec $CONTENEUR -- sqlite3 $C/dgldir/dgamelaunch.db \"DELETE FROM dglusers WHERE id = $id;\""
         else
-            alerte "Pas de terminal : mode debug non accordé. Relancez le script dans un terminal pour confirmer."
+            alerte "Mode debug non accordé pour l'instant."
         fi
     fi
     if [ "$accorde" = 1 ]; then
@@ -847,9 +853,13 @@ regler_sysconf() {
     sed -i -e 's|^GDBPATH=|#GDBPATH=|' -e 's|^GREPPATH=|#GREPPATH=|' "$S"
 }
 
-# Demande une confirmation ; « non » sans terminal interactif
+# Demande une confirmation ; « non » sans terminal interactif (dit pourquoi)
 confirmer() {
-    [ -t 0 ] || return 1
+    if [ ! -t 0 ]; then
+        alerte "Question « $1 » : pas de terminal interactif, réponse « non »."
+        alerte "Relancez le script dans un terminal, sans tube (voir README, Utilisation)."
+        return 1
+    fi
     local reponse
     read -rp "    $1 (o/N) : " reponse || return 1
     case "$reponse" in o|O|oui|OUI) return 0 ;; *) return 1 ;; esac

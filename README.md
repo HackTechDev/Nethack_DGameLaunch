@@ -27,6 +27,18 @@ Joueur ──ssh -p 2222──▶ Hôte ──proxy LXD (NAT)──▶ Conteneur
 sudo ./install-serveur-nethack.sh
 ```
 
+Pour garder une trace de l'installation, utilisez `script`, qui conserve le
+terminal :
+
+```bash
+script -q install.log -c "sudo ./install-serveur-nethack.sh"
+```
+
+Évitez `| tee` : la sortie n'étant plus un terminal, `lxc exec` n'en ouvre
+pas dans le conteneur, et les questions qui y sont posées (mise à jour
+pendant des parties, archivage des sauvegardes, confirmation du compte du
+mode debug) reçoivent automatiquement « non ». Le script le signale.
+
 Le script doit être lancé avec bash et depuis son fichier : il se recopie
 dans le conteneur. Lancé avec `sh` ou par un tube (`curl … | sudo bash`), il
 s'arrête avec un message clair.
