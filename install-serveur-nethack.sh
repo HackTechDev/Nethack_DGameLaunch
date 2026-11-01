@@ -475,7 +475,7 @@ hote() {
         alerte "$UTILISATEUR n'a toujours pas de mot de passe : lxc exec $CONTENEUR -- passwd $UTILISATEUR"
     fi
     if lxc exec "$CONTENEUR" -- systemctl is-failed --quiet nethack-entretien.service; then
-        alerte "Le dernier entretien quotidien a échoué (disque presque plein, vague d'inscriptions ?) :"
+        alerte "Le dernier entretien quotidien a échoué (chroot cassé, disque presque plein, vague d'inscriptions ?) :"
         lxc exec "$CONTENEUR" -- journalctl -u nethack-entretien.service -n 10 --no-pager -o cat >&2 || true
     fi
 }
@@ -925,7 +925,10 @@ jeu="$C$NH/nethack"
 # dynamique compris), plus libgcc_s, que ldd ne montre pas car la glibc la
 # charge à l'exécution (pile d'appels en cas de plantage, annulation de
 # thread). Son dossier dépend de l'architecture : x86_64-linux-gnu…
-multiarch=$(gcc -dumpmachine 2>/dev/null || dpkg-architecture -qDEB_HOST_MULTIARCH)
+# (gcc, sinon dpkg-architecture, sinon le dossier de la libc du jeu)
+multiarch=$(gcc -dumpmachine 2>/dev/null \
+            || dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null \
+            || basename "$(dirname "$(ldd "$jeu" | grep -o '/[^ ]*/libc\.so\.6' | head -n 1)")")
 for lib in $(ldd "$jeu" | grep -o '/[^ ]*' | sort -u) \
            "/lib/$multiarch/libgcc_s.so.1" "/usr/lib/$multiarch/libgcc_s.so.1"; do
     [ -e "$lib" ] || continue
@@ -963,7 +966,9 @@ EOF
 // Généré par install-serveur-nethack.sh : après chaque installation ou mise
 // à jour de paquets (unattended-upgrades compris), le chroot du serveur
 // NetHack reçoit les mêmes bibliothèques que le conteneur.
-DPkg::Post-Invoke { "if [ -x /usr/local/sbin/nethack-chroot-systeme ]; then /usr/local/sbin/nethack-chroot-systeme || true; fi"; };
+// Un échec ne bloque pas apt : il est inscrit dans le journal (journalctl -t
+// nethack-chroot-systeme) et l'entretien quotidien le signale.
+DPkg::Post-Invoke { "if [ -x /usr/local/sbin/nethack-chroot-systeme ]; then /usr/local/sbin/nethack-chroot-systeme || logger -t nethack-chroot-systeme -p user.err 'Échec de la recopie des fichiers système dans le chroot NetHack'; fi; true"; };
 EOF
     /usr/local/sbin/nethack-chroot-systeme
     info "Bibliothèques, terminfo, locales, fuseau horaire et comptes à jour."
@@ -1399,6 +1404,7 @@ COMPTES_PRECEDENT="$COMPTES_PRECEDENT"
 UID_JEU="$UID_JEU"
 WIZARD_CONFIRME="$WIZARD_CONFIRME"
 VERSION_NH="$VERSION_NH"
+JEU="$COMPTE_JEU"
 EOF
         cat <<'EOF'
 umask 077
@@ -1466,6 +1472,16 @@ echo "Sauvegarde : $archive ($(du -h "$archive" | cut -f1))"
 # échec, visible dans « systemctl --failed » et signalé par le script
 # d'installation.
 echec=0
+# Chroot : fichiers système recopiés (au cas où le crochet APT aurait
+# échoué), puis le jeu doit y démarrer sous le compte du jeu
+if ! /usr/local/sbin/nethack-chroot-systeme; then
+    echo "ALERTE : recopie des fichiers système dans le chroot impossible" >&2
+    echec=1
+fi
+if ! env LANG=C.UTF-8 chroot --userspec="$JEU:$JEU" "$C" "/$NH/nethack" --version >/dev/null 2>&1; then
+    echo "ALERTE : NetHack ne démarre plus dans le chroot (chroot --userspec=$JEU:$JEU $C /$NH/nethack --version)" >&2
+    echec=1
+fi
 base="$C/dgldir/dgamelaunch.db"
 comptes=$(sqlite3 "$base" "SELECT COUNT(*) FROM dglusers;")
 # Hachés DES : comptes inscrits avant le correctif de dgamelaunch et dont le

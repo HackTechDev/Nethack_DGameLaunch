@@ -285,7 +285,9 @@ conteneur et se relance avec l'option interne `--conteneur`.
      bibliothèques n'y sont pas recopiées. Comme le jeu est compilé avec les
      bibliothèques du conteneur, le chroot doit avoir les mêmes ; le crochet
      APT `90nethack-chroot` relance ce script après chaque `apt`/`dpkg`
-     (unattended-upgrades compris). `rsync` remplace les fichiers par
+     (unattended-upgrades compris) ; un échec ne bloque pas apt mais est
+     inscrit au journal (`journalctl -t nethack-chroot-systeme`), et
+     l'entretien quotidien recommence la recopie. `rsync` remplace les fichiers par
      renommage : les parties en cours ne sont pas perturbées.
 6. **sysconf** (à chaque exécution) : `WIZARDS=<PSEUDO_WIZARD>` seulement si
    ce compte existe déjà dans la base dgamelaunch et que vous avez confirmé
@@ -335,10 +337,13 @@ conteneur et se relance avec l'option interne `--conteneur`.
     - **Enregistrements de parties** (ttyrec) : compressés au bout d'un jour,
       sauf ceux des parties encore en cours (même inactives), supprimés au
       bout de `TTYREC_JOURS` jours (`0` = jamais).
+    - **Chroot** : fichiers système recopiés à nouveau, puis
+      `nethack --version` lancé dans le chroot sous `nhjeu` ; un échec est
+      une alerte (voir plus bas).
     - **Bilan** : nombre de comptes, nouveaux comptes depuis l'entretien
       précédent, comptes ayant encore un ancien haché DES (joueurs pas
       reconnectés depuis le correctif des mots de passe) et place occupée
-      par les données des joueurs. Au-delà de `ALERTE_INSCRIPTIONS` nouveaux
+      par les données des joueurs. Si le chroot est cassé, au-delà de `ALERTE_INSCRIPTIONS` nouveaux
       comptes, ou de 90 % de disque occupé (pool de stockage LXD,
       partagé avec les autres conteneurs), le service se termine en échec :
       il apparaît dans `systemctl --failed` du conteneur, et le script
