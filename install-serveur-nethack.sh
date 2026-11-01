@@ -13,7 +13,14 @@
 # existe déjà, le jeu y est mis à jour sans toucher aux comptes, aux parties
 # ni au sysconf du serveur.
 # =============================================================================
+if [ -z "${BASH_VERSION:-}" ]; then
+    echo "Ce script nécessite bash : sudo ./install-serveur-nethack.sh (ou sudo bash …)" >&2
+    exit 1
+fi
 set -euo pipefail
+
+# Chemin réel du script, recopié tel quel dans le conteneur
+SCRIPT=$(readlink -f "${BASH_SOURCE[0]:-$0}" 2>/dev/null || true)
 
 # ----------------------------------------------------------------- Réglages --
 CONTENEUR="nethack"              # nom du conteneur LXD
@@ -99,6 +106,9 @@ ufw_actif() {
 }
 
 hote() {
+    if [ -z "$SCRIPT" ] || [ ! -f "$SCRIPT" ] || ! grep -q '^conteneur() {' "$SCRIPT"; then
+        erreur "Lancer le script depuis son fichier (sudo ./install-serveur-nethack.sh), pas par un tube."
+    fi
     case "$PORT_SSH" in
         ''|*[!0-9]*) erreur "PORT_SSH doit être un numéro de port." ;;
     esac
@@ -207,7 +217,7 @@ hote() {
     fi
 
     etape "Installation dans le conteneur"
-    lxc file push "$0" "$CONTENEUR/root/install-serveur-nethack.sh" --mode=0755
+    lxc file push "$SCRIPT" "$CONTENEUR/root/install-serveur-nethack.sh" --mode=0755
     lxc exec "$CONTENEUR" -- /root/install-serveur-nethack.sh --conteneur
 
     etape "Fichiers spéciaux du chroot (/dev/urandom, /dev/null)"

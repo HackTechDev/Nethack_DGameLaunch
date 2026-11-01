@@ -27,6 +27,10 @@ Joueur ──ssh -p 2222──▶ Hôte ──proxy LXD──▶ Conteneur « ne
 sudo ./install-serveur-nethack.sh
 ```
 
+Le script doit être lancé avec bash et depuis son fichier : il se recopie
+dans le conteneur. Lancé avec `sh` ou par un tube (`curl … | sudo bash`), il
+s'arrête avec un message clair.
+
 À la fin, le script affiche la commande de connexion :
 
 ```bash
