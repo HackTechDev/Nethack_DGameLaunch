@@ -25,6 +25,7 @@ NAT_PROXY="oui"                  # oui : sshd voit l'adresse réelle des joueurs
                                  # (IPv4 fixe pour le conteneur) ; non : tous
                                  # les joueurs semblent venir de 127.0.0.1
 ADRESSE_HOTE=""                  # IPv4 de l'hôte où écouter (vide = automatique)
+IPV6="oui"                       # accepter aussi les joueurs en IPv6 (mode NAT)
 CANAL_LXD="6.0/stable"           # version de LXD à installer
 
 UTILISATEUR="util01"             # compte de compilation dans le conteneur
@@ -183,6 +184,24 @@ hote() {
         fi
     fi
     info "${ecoute#tcp:} (hôte) → ${cible#tcp:} (SSH du conteneur)${nat:+, mode NAT}"
+
+    # IPv6. Sans NAT, le proxy sur 0.0.0.0 écoute déjà en double pile. En mode
+    # NAT, il n'écoute que sur une IPv4 : un second proxy, classique, reçoit
+    # l'IPv6 et la transmet par [::1] (exempté des pénalités dans sshd).
+    case "$IPV6" in oui|non) ;; *) erreur "IPV6 doit valoir oui ou non." ;; esac
+    ecoute6="tcp:[::]:$PORT_SSH"
+    ancienne6=$(lxc config device get "$CONTENEUR" ssh-nethack6 listen 2>/dev/null || true)
+    if [ -n "$nat" ] && [ "$IPV6" = oui ]; then
+        if [ "$ancienne6" != "$ecoute6" ]; then
+            [ -n "$ancienne6" ] && lxc config device remove "$CONTENEUR" ssh-nethack6 >/dev/null
+            lxc config device add "$CONTENEUR" ssh-nethack6 proxy \
+                listen="$ecoute6" connect="tcp:[::1]:22" >/dev/null
+        fi
+        info "[::]:$PORT_SSH (hôte, IPv6) → [::1]:22 (SSH du conteneur)"
+    elif [ -n "$ancienne6" ]; then
+        lxc config device remove "$CONTENEUR" ssh-nethack6 >/dev/null
+        info "Proxy IPv6 séparé retiré"
+    fi
     if [ -n "$nat" ] && [ -z "$ADRESSE_HOTE" ]; then
         info "Si l'IPv4 de l'hôte change, relancer le script (ou fixer ADRESSE_HOTE)."
     fi

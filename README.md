@@ -64,6 +64,7 @@ Les variables en tête du script :
 | `PORT_SSH`        | `2222`                                                  | Port de l'hôte ouvert aux joueurs |
 | `NAT_PROXY`       | `oui`                                                   | `oui` : sshd voit l'adresse réelle des joueurs (IPv4 fixe pour le conteneur) ; `non` : tous semblent venir de `127.0.0.1` |
 | `ADRESSE_HOTE`    | *(vide)*                                                | IPv4 de l'hôte où écouter en mode NAT (vide = celle de la route par défaut) |
+| `IPV6`            | `oui`                                                   | Accepter aussi les joueurs en IPv6 en mode NAT |
 | `CANAL_LXD`       | `6.0/stable`                                            | Canal snap de LXD |
 | `UTILISATEUR`     | `util01`                                                | Compte de compilation et d'administration |
 | `COMPTE_JEU`      | `nhjeu`                                                 | Compte système sans connexion sous lequel tournent les parties |
@@ -117,6 +118,12 @@ conteneur et se relance avec l'option interne `--conteneur`.
      `127.0.0.1` ; cette adresse est donc exemptée des pénalités
      (`PerSourcePenaltyExemptList`), sinon un seul client fautif bloquerait
      tout le monde.
+
+   - **IPv6** : sans NAT, le proxy sur `0.0.0.0` écoute déjà en double pile.
+     En mode NAT, il n'écoute que sur une IPv4 : un second device,
+     `ssh-nethack6` (`[::]:PORT_SSH` → `[::1]:22`, proxy classique), reçoit
+     les joueurs IPv6 (`IPV6=oui`). Ils arrivent dans sshd sous l'adresse
+     `::1`, exemptée des pénalités.
 
    Si un de ces réglages ou `PORT_SSH` change, le device est recréé et
    l'ancien port refermé dans ufw.
