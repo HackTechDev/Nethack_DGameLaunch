@@ -541,7 +541,8 @@ paquets() {
     local complet=0 p manquants=()
     local liste=(git gcc make curl gettext libncurses-dev
                  build-essential autoconf automake bison flex
-                 libsqlite3-dev sqlite3 openssh-server rsync unattended-upgrades)
+                 libsqlite3-dev sqlite3 openssh-server rsync unattended-upgrades
+                 nftables)
     case "$MAJ_SYSTEME" in
         toujours) complet=1 ;;
         premiere) [ -e "$SYSTEME_INIT" ] || complet=1 ;;
@@ -1331,6 +1332,47 @@ EOF
     systemctl restart ssh
 }
 
+# Pare-feu du conteneur : aucun accès réseau pour le compte du jeu. Ni
+# NetHack ni dgamelaunch n'en ont besoin (la session passe par le terminal de
+# sshd, dont la connexion appartient à root) ; une faille de NetHack ne permet
+# donc ni de joindre le réseau local ou la box, ni l'hôte, ni Internet. Table
+# nftables dédiée, rechargée au démarrage par nethack-pare-feu.service.
+pare_feu_jeu() {
+    etape "Pare-feu : pas de réseau pour le compte $COMPTE_JEU"
+    cat > /etc/nethack-pare-feu.nft <<EOF
+# Généré par install-serveur-nethack.sh : ne pas modifier, relancer le script.
+table inet nethack
+delete table inet nethack
+table inet nethack {
+    chain sortie {
+        type filter hook output priority 0; policy accept;
+        meta skuid "$COMPTE_JEU" counter reject
+    }
+}
+EOF
+    cat > /etc/systemd/system/nethack-pare-feu.service <<'EOF'
+[Unit]
+Description=Pare-feu du serveur NetHack (pas de réseau pour le compte du jeu)
+Before=ssh.service ssh.socket
+After=local-fs.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/nft -f /etc/nethack-pare-feu.nft
+ExecStop=/usr/sbin/nft delete table inet nethack
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    systemctl daemon-reload
+    systemctl enable nethack-pare-feu.service >/dev/null 2>&1
+    systemctl restart nethack-pare-feu.service
+    nft list chain inet nethack sortie 2>/dev/null | grep -q reject \
+        || erreur "Le pare-feu du compte $COMPTE_JEU n'a pas pu être chargé."
+    info "Connexions réseau refusées au compte $COMPTE_JEU (table nftables inet nethack)"
+}
+
 # Entretien quotidien (timer systemd) : sauvegarde des comptes et des parties,
 # compression et suppression des vieux enregistrements de parties (ttyrec)
 installer_entretien() {
@@ -1669,6 +1711,7 @@ conteneur() {
     configurer_dgamelaunch
     nettoyer_restes_dgl
     configurer_ssh
+    pare_feu_jeu
     installer_entretien
 }
 

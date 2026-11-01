@@ -116,6 +116,7 @@ Chemins dérivés (dans le conteneur) :
 | `/opt/nethack/nethack.fichiers`     | Liste des fichiers du jeu installés dans le chroot |
 | `/opt/nethack/sauvegardes/`         | Sauvegardes quotidiennes (`nethack-AAAAMMJJ-HHMMSS.tar.gz`) |
 | `/usr/local/sbin/nethack-entretien` | Script d'entretien quotidien (généré) |
+| `/etc/nethack-pare-feu.nft`        | Pare-feu du compte du jeu (table nftables `inet nethack`, service `nethack-pare-feu`) |
 | `/usr/local/sbin/nethack-restaurer` | Restauration d'une sauvegarde quotidienne (généré) |
 | `/usr/local/sbin/nethack-chroot-systeme` | Recopie des bibliothèques et fichiers système dans le chroot (généré, lancé aussi par le crochet APT `/etc/apt/apt.conf.d/90nethack-chroot`) |
 | `/usr/local/sbin/nethack-adresse` (hôte) | Suivi de l'IPv4 de l'hôte en mode NAT (généré, timer `nethack-adresse.timer`) |
@@ -199,7 +200,7 @@ conteneur et se relance avec l'option interne `--conteneur`.
    manquants (`--no-upgrade`). S'il n'y a rien à installer ni à mettre à
    jour, `apt-get update` n'est même pas lancé : relancer le script pour
    changer un réglage fonctionne aussi sans accès aux dépôts. Paquets : outils de compilation, ncurses, SQLite,
-   OpenSSH, rsync, unattended-upgrades. Relancer le script pour changer un
+   OpenSSH, rsync, unattended-upgrades, nftables. Relancer le script pour changer un
    réglage ne met donc pas tout le système à jour ; les mises à jour de
    sécurité restent appliquées chaque jour par unattended-upgrades. Le chroot
    est autonome : ces mises à jour ne le cassent pas, et un crochet APT
@@ -312,7 +313,16 @@ conteneur et se relance avec l'option interne `--conteneur`.
    explicitement (`PasswordAuthentication no`, `KbdInteractiveAuthentication
    no`, `PermitRootLogin prohibit-password`), sans dépendre du réglage de
    l'image : le port est public. La configuration est vérifiée par `sshd -t` avant le redémarrage.
-10. **Entretien quotidien** : script `/usr/local/sbin/nethack-entretien`
+10. **Pare-feu du compte du jeu** : table nftables `inet nethack`
+    (`/etc/nethack-pare-feu.nft`, chargée au démarrage par
+    `nethack-pare-feu.service`) qui refuse toute connexion réseau au compte
+    `nhjeu`, y compris vers `localhost`. Ni NetHack ni dgamelaunch n'en ont
+    besoin : la session passe par le terminal de sshd. Une faille de NetHack
+    ne permet donc ni de joindre la box ou les machines du réseau local, ni
+    l'hôte, ni Internet. (Une ACL réseau LXD sur la seule carte du conteneur
+    n'est pas possible avec LXD 6.0 pour un pont `lxdbr0`, et une ACL sur tout
+    `lxdbr0` toucherait tous les conteneurs.)
+11. **Entretien quotidien** : script `/usr/local/sbin/nethack-entretien`
     lancé vers 4 h 30 par le timer systemd `nethack-entretien.timer` (rattrapé
     au démarrage s'il a été manqué).
     - **Sauvegarde** dans `/opt/nethack/sauvegardes/` : base des comptes
@@ -484,7 +494,8 @@ jamais et ne touche qu'aux lignes `chroot_path`, `shed_uid`, `shed_gid`,
   donnerait donc accès à la base (hachés des mots de passe), aux sauvegardes,
   options et enregistrements des autres joueurs, et aux scores. Elle ne
   permettrait pas de modifier le jeu, `sysconf` ni le mode debug (root), ni
-  de sortir du chroot. Depuis le correctif des mots de passe, une base volée
+  de sortir du chroot, ni d'ouvrir une connexion réseau (pare-feu du compte
+  du jeu). Depuis le correctif des mots de passe, une base volée
   ne suffit plus à se connecter : il faudrait casser des hachés yescrypt.
   Séparer les deux comptes demanderait de modifier dgamelaunch en
   profondeur. Le compte `util01` reste verrouillé tant qu'aucun
