@@ -273,7 +273,8 @@ conteneur et se relance avec l'option interne `--conteneur`.
      `/usr/local/sbin/nethack-chroot-systeme` : bibliothèques du jeu du
      chroot (`ldd` + `libgcc_s`, cherchée dans le dossier de l'architecture
      donné par `gcc -dumpmachine`), terminfo, locales, `localtime` et
-     `passwd`/`group` minimaux. dgamelaunch tourne hors du chroot : ses
+     `passwd`/`group` minimaux (`root` et `nhjeu` ; `util01` seulement tant
+     que des parties tournent encore sous son UID). dgamelaunch tourne hors du chroot : ses
      bibliothèques n'y sont pas recopiées. Comme le jeu est compilé avec les
      bibliothèques du conteneur, le chroot doit avoir les mêmes ; le crochet
      APT `90nethack-chroot` relance ce script après chaque `apt`/`dpkg`

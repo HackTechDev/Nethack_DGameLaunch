@@ -915,8 +915,14 @@ if [ -d /lib/terminfo ]; then
 fi
 rsync -a /usr/lib/locale/ "$C/usr/lib/locale/"
 rsync -aL /etc/localtime "$C/etc/localtime"
-grep -E "^(root|$COMPTE_JEU|$UTILISATEUR):" /etc/passwd > "$C/etc/passwd.nouveau"
-grep -E "^(root|$COMPTE_JEU|$UTILISATEUR):" /etc/group  > "$C/etc/group.nouveau"
+# Comptes : root et celui des parties. $UTILISATEUR seulement tant que des
+# parties tournent encore sous son UID (passage à $COMPTE_JEU reporté)
+comptes="root|$COMPTE_JEU"
+if [ "$(cat "$UID_JEU" 2>/dev/null)" != "$(id -u "$COMPTE_JEU")" ]; then
+    comptes="$comptes|$UTILISATEUR"
+fi
+grep -E "^($comptes):" /etc/passwd > "$C/etc/passwd.nouveau"
+grep -E "^($comptes):" /etc/group  > "$C/etc/group.nouveau"
 mv "$C/etc/passwd.nouveau" "$C/etc/passwd"
 mv "$C/etc/group.nouveau" "$C/etc/group"
 EOF
@@ -1397,8 +1403,8 @@ conteneur() {
         creer_chroot
         version_sources_nh > "$VERSION_NH"
     fi
+    proprietaires_chroot     # avant copier_systeme_chroot : écrit $UID_JEU
     copier_systeme_chroot
-    proprietaires_chroot
     regler_sysconf
     configurer_dgamelaunch
     nettoyer_restes_dgl
