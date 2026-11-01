@@ -1424,11 +1424,20 @@ done
 for f in "$C"/dgl_menu_*.txt "$C/dgl-banner" "$C"/dgl-default-rcfile.* "$C/mail"; do
     if [ -e "$f" ]; then elements+=("${f#"$C"/}"); fi
 done
-archive="$DEST/nethack-$(date +%Y%m%d-%H%M%S).tar.gz"
+# Nom unique, même pour deux sauvegardes dans la même seconde (celle qui
+# précède une restauration, par exemple) : une archive n'est jamais écrasée
+base_archive="$DEST/nethack-$(date +%Y%m%d-%H%M%S)"
+archive="$base_archive.tar.gz"
+n=1
+while [ -e "$archive" ] || [ -e "$archive.partiel" ]; do
+    n=$((n + 1))
+    archive="$base_archive-$n.tar.gz"
+done
 tar -C "$C" --exclude=dgldir/dgamelaunch.db --exclude='dgldir/userdata/*/ttyrec' \
     --exclude='dgldir/inprogress-*' -czf "$archive.partiel" "${elements[@]}" \
     -C "$tmp" "${extras[@]}"
-mv "$archive.partiel" "$archive"
+mv -n "$archive.partiel" "$archive"
+[ ! -e "$archive.partiel" ] || { echo "ERREUR : $archive existe déjà" >&2; exit 1; }
 find "$DEST" -maxdepth 1 -name 'nethack-*.tar.gz' -mtime +"$SAUVEGARDES_JOURS" -delete
 
 # Enregistrements de parties : compressés au bout d'un jour, sauf ceux des

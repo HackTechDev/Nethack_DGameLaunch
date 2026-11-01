@@ -114,7 +114,7 @@ Chemins dérivés (dans le conteneur) :
 | `/opt/nethack/jeu.uid`               | UID sous lequel tournent les parties |
 | `/opt/nethack/wizard.confirme`      | Empreinte du compte du mode debug confirmé par l'admin |
 | `/opt/nethack/nethack.fichiers`     | Liste des fichiers du jeu installés dans le chroot |
-| `/opt/nethack/sauvegardes/`         | Sauvegardes quotidiennes (`nethack-AAAAMMJJ-HHMMSS.tar.gz`) |
+| `/opt/nethack/sauvegardes/`         | Sauvegardes quotidiennes (`nethack-AAAAMMJJ-HHMMSS.tar.gz`, suffixe `-2`, `-3`… si plusieurs dans la même seconde : jamais écrasées) |
 | `/usr/local/sbin/nethack-entretien` | Script d'entretien quotidien (généré) |
 | `/etc/nethack-pare-feu.nft`        | Pare-feu du compte du jeu (table nftables `inet nethack`, service `nethack-pare-feu`) |
 | `/usr/local/sbin/nethack-restaurer` | Restauration d'une sauvegarde quotidienne (généré) |
