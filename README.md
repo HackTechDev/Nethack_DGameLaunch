@@ -91,6 +91,7 @@ Les variables en tête du script :
 | `LANGUE`          | `fr@cyber`                                              | Langue par défaut des joueurs (`fr`, `fr@cyber`, `en`) |
 | `NOM_SERVEUR`     | `NetHack 5.0 cybernethack`                              | Nom affiché dans le menu dgamelaunch |
 | `MAX_JOUEURS`     | `50`                                                    | Connexions simultanées maximum |
+| `INSCRIPTIONS`    | `oui`                                                   | `non` ferme les inscriptions (les comptes existants restent utilisables) |
 | `SAUVEGARDES_JOURS` | `14`                                                  | Nombre de jours de sauvegardes quotidiennes gardés |
 | `SAUVEGARDES_HOTE` | `/var/backups/nethack`                                | Dossier de l'hôte où sont écrites les sauvegardes (vide = dans le conteneur seulement) |
 | `TTYREC_JOURS`    | `180`                                                   | Enregistrements de parties gardés, en jours (`0` = tous) |
@@ -274,7 +275,8 @@ conteneur et se relance avec l'option interne `--conteneur`.
      `LANG=C.UTF-8` et date du MOTD renseignés ; menus et bannière copiés dans
      le chroot ;
    - **à chaque exécution** : `chroot_path`, `shed_uid`/`shed_gid`,
-     `maxusers` (`MAX_JOUEURS`) et nom du serveur (`NOM_SERVEUR`) sont
+     `maxusers` (`MAX_JOUEURS`), `allow_new_nicks` (`INSCRIPTIONS`) et nom
+     du serveur (`NOM_SERVEUR`) sont
      réappliqués. Une alerte signale toute ligne introuvable.
 8. **rcfile par défaut** `dgl-default-rcfile.nh500` : basé sur
    `config/nethackrc`, avec une unique ligne `OPTIONS=language:<LANGUE>`
@@ -295,6 +297,11 @@ conteneur et se relance avec l'option interne `--conteneur`.
     - **Enregistrements de parties** (ttyrec) : compressés au bout d'un jour,
       sauf ceux des parties encore en cours (même inactives), supprimés au
       bout de `TTYREC_JOURS` jours (`0` = jamais).
+    - **Bilan** : nombre de comptes et place occupée par les données des
+      joueurs, avec une alerte au-delà de 90 % de disque occupé
+      (`journalctl -u nethack-entretien`). dgamelaunch ne limite pas le
+      rythme des inscriptions : en cas de vague de comptes indésirables,
+      passez `INSCRIPTIONS=non` et relancez le script.
 
 ## Administration
 
@@ -354,7 +361,7 @@ lxc stop nethack / lxc start nethack        # arrêt / démarrage
 Pour modifier la configuration dgamelaunch après coup, éditez directement
 `/opt/nethack/dgamelaunch.conf` dans le conteneur : le script ne l'écrase
 jamais et ne touche qu'aux lignes `chroot_path`, `shed_uid`, `shed_gid`,
-`maxusers` et `$SERVERID`.
+`maxusers`, `allow_new_nicks` et `$SERVERID`.
 
 ## Points d'attention
 

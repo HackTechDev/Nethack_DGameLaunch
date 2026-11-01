@@ -50,6 +50,9 @@ PSEUDO_WIZARD="utildebug"        # pseudo dgamelaunch autorisé en mode debug
 LANGUE="fr@cyber"                # langue par défaut des joueurs (fr, fr@cyber, en)
 NOM_SERVEUR="NetHack 5.0 cybernethack"
 MAX_JOUEURS="50"                 # connexions simultanées maximum
+INSCRIPTIONS="oui"               # oui : tout visiteur peut créer un compte ;
+                                 # non : inscriptions fermées (comptes existants
+                                 # conservés)
 SAUVEGARDES_JOURS="14"           # sauvegardes quotidiennes (comptes, parties) gardées
 SAUVEGARDES_HOTE="/var/backups/nethack"  # dossier de l'hôte où elles sont écrites,
                                  # pour survivre à la suppression du conteneur
@@ -1123,17 +1126,24 @@ configurer_dgamelaunch() {
     # Réglages du script : appliqués à chaque exécution
     case "$NOM_SERVEUR" in *'"'*) erreur "NOM_SERVEUR ne doit pas contenir de guillemet." ;; esac
     case "$MAX_JOUEURS" in ''|*[!0-9]*) erreur "MAX_JOUEURS doit être un nombre." ;; esac
+    case "$INSCRIPTIONS" in
+        oui) inscr=yes ;;
+        non) inscr=no ;;
+        *)   erreur "INSCRIPTIONS doit valoir oui ou non." ;;
+    esac
     U=$(id -u "$JEU"); G=$(id -g "$JEU")
     sed -i -e "s|^chroot_path = .*|chroot_path = \"$(echapper "$C")/\"|" \
            -e "s|^shed_uid = .*|shed_uid = $U|" \
            -e "s|^shed_gid = .*|shed_gid = $G|" \
            -e "s|^maxusers = .*|maxusers = $MAX_JOUEURS|" \
+           -e "s|^allow_new_nicks = .*|allow_new_nicks = $inscr|" \
            -e "s|\"\\\$SERVERID\" = \"[^\"]*\"|\"\$SERVERID\" = \"\$ATTR(14)$(echapper "$NOM_SERVEUR")\$ATTR()\"|" \
         "$CONF"
-    for motif in '^chroot_path = ' '^shed_uid = ' '^shed_gid = ' '^maxusers = ' '"\$SERVERID" = '; do
+    for motif in '^chroot_path = ' '^shed_uid = ' '^shed_gid = ' '^maxusers = ' \
+                 '^allow_new_nicks = ' '"\$SERVERID" = '; do
         grep -q "$motif" "$CONF" || alerte "Ligne « $motif » absente de $CONF : réglage non appliqué"
     done
-    info "maxusers = $MAX_JOUEURS, nom du serveur : $NOM_SERVEUR"
+    info "maxusers = $MAX_JOUEURS, inscriptions : $INSCRIPTIONS, nom du serveur : $NOM_SERVEUR"
 
     # Options par défaut des joueurs : une seule ligne language
     R="$C/dgl-default-rcfile.nh500"
@@ -1236,6 +1246,15 @@ if [ "$TTYREC_JOURS" -gt 0 ]; then
     find "$C/dgldir/userdata" -path '*/ttyrec/*' -type f -mtime +"$TTYREC_JOURS" -delete
 fi
 echo "Sauvegarde : $archive ($(du -h "$archive" | cut -f1))"
+
+# Bilan : les inscriptions étant ouvertes à tous, une vague de comptes peut
+# remplir la base et le disque. Alerte dans le journal au-delà de 90 %.
+comptes=$(sqlite3 "$C/dgldir/dgamelaunch.db" "SELECT COUNT(*) FROM dglusers;")
+echo "Comptes : $comptes ; données des joueurs : $(du -sh "$C/dgldir" | cut -f1)"
+occupe=$(df --output=pcent "$C" | tail -n 1 | tr -dc '0-9')
+if [ "$occupe" -ge 90 ]; then
+    echo "ALERTE : disque occupé à $occupe % (INSCRIPTIONS=non pour fermer les inscriptions)" >&2
+fi
 EOF
     } > /usr/local/sbin/nethack-entretien
     chmod 755 /usr/local/sbin/nethack-entretien
