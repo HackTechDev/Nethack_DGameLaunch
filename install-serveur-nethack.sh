@@ -864,44 +864,73 @@ manifeste_jeu() {
         | awk '$NF != "." { print $NF }' | LC_ALL=C sort
 }
 
-# Bibliothèques et fichiers système du chroot, recopiés à chaque exécution :
-# le jeu étant recompilé avec les bibliothèques du conteneur (mises à jour par
-# apt), le chroot doit avoir les mêmes. rsync remplace chaque fichier par
+# Bibliothèques et fichiers système du chroot : le jeu étant compilé avec les
+# bibliothèques du conteneur, le chroot doit avoir les mêmes, correctifs de
+# sécurité compris. Le script /usr/local/sbin/nethack-chroot-systeme les
+# recopie ; il est lancé ici et, par un crochet APT, après chaque mise à jour
+# de paquets (unattended-upgrades compris). rsync remplace chaque fichier par
 # renommage, sans risque pour les parties en cours ; les fichiers inchangés
 # ne sont pas recopiés.
 copier_systeme_chroot() {
     etape "Fichiers système du chroot"
-    # Bibliothèques : celles listées par ldd (chargeur dynamique compris), plus
-    # libgcc_s, que ldd ne montre pas car la glibc la charge à l'exécution
-    # (pile d'appels en cas de plantage, annulation de thread). Son dossier
-    # dépend de l'architecture : x86_64-linux-gnu, aarch64-linux-gnu…
-    multiarch=$(gcc -dumpmachine)
-    for lib in $( { ldd "$NH/nethack"; ldd /opt/nethack/dgamelaunch; } \
-                      | grep -o '/[^ ]*' | sort -u) \
-               "/lib/$multiarch/libgcc_s.so.1" "/usr/lib/$multiarch/libgcc_s.so.1"; do
-        [ -e "$lib" ] || continue
-        mkdir -p "$C$(dirname "$lib")"
-        rsync -aL "$lib" "$C$lib"
-    done
-    if ! ls "$C"/lib/"$multiarch"/libgcc_s.so.1 "$C"/usr/lib/"$multiarch"/libgcc_s.so.1 \
-            >/dev/null 2>&1; then
-        alerte "libgcc_s.so.1 introuvable pour $multiarch : NetHack risque de planter dans le chroot."
-        alerte "Chercher son chemin avec « ldconfig -p | grep libgcc_s » et la copier dans $C."
-    fi
+    {
+        cat <<EOF
+#!/bin/bash
+# Généré par install-serveur-nethack.sh : ne pas modifier, relancer le script.
+# Recopie dans le chroot les bibliothèques et fichiers système du conteneur.
+set -euo pipefail
+C="$C"
+NH="$NH"
+COMPTE_JEU="$COMPTE_JEU"
+UTILISATEUR="$UTILISATEUR"
+UID_JEU="$UID_JEU"
+EOF
+        cat <<'EOF'
+alerte() { printf '[!] nethack-chroot-systeme : %s\n' "$*" >&2; }
+jeu="$C$NH/nethack"
+[ -f "$jeu" ] || exit 0          # chroot pas encore créé
 
-    mkdir -p "$C/usr/share/terminfo" "$C/usr/lib/locale" "$C/etc" "$C/dev"
-    rsync -a /usr/share/terminfo/ "$C/usr/share/terminfo/"
-    if [ -d /lib/terminfo ]; then
-        mkdir -p "$C/lib/terminfo"
-        rsync -a /lib/terminfo/ "$C/lib/terminfo/"
-    fi
-    rsync -a /usr/lib/locale/ "$C/usr/lib/locale/"
-    rsync -aL /etc/localtime "$C/etc/localtime"
-    grep -E "^(root|$COMPTE_JEU|$UTILISATEUR):" /etc/passwd > "$C/etc/passwd.nouveau"
-    grep -E "^(root|$COMPTE_JEU|$UTILISATEUR):" /etc/group  > "$C/etc/group.nouveau"
-    mv "$C/etc/passwd.nouveau" "$C/etc/passwd"
-    mv "$C/etc/group.nouveau" "$C/etc/group"
+# Bibliothèques : celles listées par ldd pour le jeu du chroot (chargeur
+# dynamique compris), plus libgcc_s, que ldd ne montre pas car la glibc la
+# charge à l'exécution (pile d'appels en cas de plantage, annulation de
+# thread). Son dossier dépend de l'architecture : x86_64-linux-gnu…
+multiarch=$(gcc -dumpmachine 2>/dev/null || dpkg-architecture -qDEB_HOST_MULTIARCH)
+for lib in $(ldd "$jeu" | grep -o '/[^ ]*' | sort -u) \
+           "/lib/$multiarch/libgcc_s.so.1" "/usr/lib/$multiarch/libgcc_s.so.1"; do
+    [ -e "$lib" ] || continue
+    mkdir -p "$C$(dirname "$lib")"
+    rsync -aL "$lib" "$C$lib"
+done
+if ! ls "$C"/lib/"$multiarch"/libgcc_s.so.1 "$C"/usr/lib/"$multiarch"/libgcc_s.so.1 \
+        >/dev/null 2>&1; then
+    alerte "libgcc_s.so.1 introuvable pour $multiarch : NetHack risque de planter dans le chroot."
+    alerte "Chercher son chemin avec « ldconfig -p | grep libgcc_s » et la copier dans $C."
+fi
+
+mkdir -p "$C/usr/share/terminfo" "$C/usr/lib/locale" "$C/etc" "$C/dev"
+rsync -a /usr/share/terminfo/ "$C/usr/share/terminfo/"
+if [ -d /lib/terminfo ]; then
+    mkdir -p "$C/lib/terminfo"
+    rsync -a /lib/terminfo/ "$C/lib/terminfo/"
+fi
+rsync -a /usr/lib/locale/ "$C/usr/lib/locale/"
+rsync -aL /etc/localtime "$C/etc/localtime"
+grep -E "^(root|$COMPTE_JEU|$UTILISATEUR):" /etc/passwd > "$C/etc/passwd.nouveau"
+grep -E "^(root|$COMPTE_JEU|$UTILISATEUR):" /etc/group  > "$C/etc/group.nouveau"
+mv "$C/etc/passwd.nouveau" "$C/etc/passwd"
+mv "$C/etc/group.nouveau" "$C/etc/group"
+EOF
+    } > /usr/local/sbin/nethack-chroot-systeme
+    chmod 755 /usr/local/sbin/nethack-chroot-systeme
+    cat > /etc/apt/apt.conf.d/90nethack-chroot <<'EOF'
+// Généré par install-serveur-nethack.sh : après chaque installation ou mise
+// à jour de paquets (unattended-upgrades compris), le chroot du serveur
+// NetHack reçoit les mêmes bibliothèques que le conteneur.
+DPkg::Post-Invoke { "if [ -x /usr/local/sbin/nethack-chroot-systeme ]; then /usr/local/sbin/nethack-chroot-systeme || true; fi"; };
+EOF
+    /usr/local/sbin/nethack-chroot-systeme
     info "Bibliothèques, terminfo, locales, fuseau horaire et comptes à jour."
+    info "Recopiés aussi après chaque mise à jour de paquets (crochet APT 90nethack-chroot)."
 }
 
 # Échappe une valeur pour la partie remplacement d'un s|...|...| de sed

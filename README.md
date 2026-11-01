@@ -196,8 +196,10 @@ conteneur et se relance avec l'option interne `--conteneur`.
    OpenSSH, rsync, unattended-upgrades. Relancer le script pour changer un
    réglage ne met donc pas tout le système à jour ; les mises à jour de
    sécurité restent appliquées chaque jour par unattended-upgrades. Le chroot
-   est autonome : ces mises à jour ne le cassent pas, mais ses bibliothèques
-   ne reçoivent les correctifs qu'à la prochaine exécution du script. Sur une
+   est autonome : ces mises à jour ne le cassent pas, et un crochet APT
+   (`/etc/apt/apt.conf.d/90nethack-chroot`) lui recopie les bibliothèques
+   après chaque mise à jour de paquets : il reçoit les correctifs de sécurité
+   le jour même, sans relancer le script. Sur une
    installation existante, le premier passage à cette version fait encore une
    mise à jour complète.
 2. **Comptes** : `util01` créé avec mot de passe désactivé
@@ -267,13 +269,16 @@ conteneur et se relance avec l'option interne `--conteneur`.
      lors d'une mise à jour, `sysconf`. Les motifs sont ancrés à la racine du
      dossier du jeu. La copie datée du binaire laissée par `dgl-create-chroot`
      (`nethack.AAAAMMJJ`) est supprimée ;
-   - **dans les deux cas**, fichiers système recopiés depuis le conteneur :
-     bibliothèques de NetHack et de dgamelaunch (`ldd` + `libgcc_s`, cherchée
-     dans le dossier de l'architecture donné par `gcc -dumpmachine`),
-     terminfo, locales, `localtime` et `passwd`/`group` minimaux. Comme le jeu
-     est recompilé avec les bibliothèques du conteneur, le chroot doit avoir
-     les mêmes. `rsync` remplace les fichiers par renommage : les parties en
-     cours ne sont pas perturbées.
+   - **dans les deux cas**, fichiers système recopiés depuis le conteneur par
+     `/usr/local/sbin/nethack-chroot-systeme` : bibliothèques du jeu du
+     chroot (`ldd` + `libgcc_s`, cherchée dans le dossier de l'architecture
+     donné par `gcc -dumpmachine`), terminfo, locales, `localtime` et
+     `passwd`/`group` minimaux. dgamelaunch tourne hors du chroot : ses
+     bibliothèques n'y sont pas recopiées. Comme le jeu est compilé avec les
+     bibliothèques du conteneur, le chroot doit avoir les mêmes ; le crochet
+     APT `90nethack-chroot` relance ce script après chaque `apt`/`dpkg`
+     (unattended-upgrades compris). `rsync` remplace les fichiers par
+     renommage : les parties en cours ne sont pas perturbées.
 6. **sysconf** (à chaque exécution) : `WIZARDS=<PSEUDO_WIZARD>` seulement si
    ce compte existe déjà dans la base dgamelaunch et que vous avez confirmé
    qu'il est le vôtre (sinon `WIZARDS=-aucun-`, un nom impossible à inscrire), `CHECK_PLNAME=1`, dumplogs dans `/dgldir/userdata/<pseudo>/dumplog/`,
