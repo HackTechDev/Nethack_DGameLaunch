@@ -1054,6 +1054,14 @@ configurer_ssh() {
 # sinon un seul client fautif bloquerait tous les joueurs.
 PerSourcePenaltyExemptList 127.0.0.1/32,::1/128
 
+# Connexions non authentifiées : au plus 10 par adresse (un seul client ne
+# peut plus occuper toutes les places ; les joueurs IPv6, qui arrivent tous
+# par ::1 en mode NAT, partagent ce quota), 50 à 150 au total, 30 s pour
+# s'authentifier (immédiat pour le compte nethack, sans mot de passe).
+PerSourceMaxStartups 10
+MaxStartups 50:30:150
+LoginGraceTime 30
+
 Match User nethack
     PasswordAuthentication yes
     PermitEmptyPasswords yes

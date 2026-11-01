@@ -137,6 +137,15 @@ conteneur et se relance avec l'option interne `--conteneur`.
      `ssh-nethack6` (`[::]:PORT_SSH` → `[::1]:22`, proxy classique), reçoit
      les joueurs IPv6 (`IPV6=oui`). Ils arrivent dans sshd sous l'adresse
      `::1`, exemptée des pénalités.
+   - **Connexions non authentifiées** (sshd) : au plus 10 par adresse
+     (`PerSourceMaxStartups`), 50 à 150 au total (`MaxStartups`), 30 s pour
+     s'authentifier (`LoginGraceTime`). Un client seul ne peut donc plus
+     occuper toutes les places. Limite connue : en mode NAT, les joueurs
+     IPv6 partagent le quota de `::1`, si bien qu'un attaquant IPv6 peut
+     gêner les autres joueurs IPv6 (pas les joueurs IPv4). Une protection
+     complète demanderait le NAT IPv6, donc une IPv6 fixe pour le conteneur
+     (DHCPv6 avec attribution d'adresses sur `lxdbr0`) ; `IPV6=non` supprime
+     l'accès IPv6.
 
    Si un de ces réglages ou `PORT_SSH` change, le device est recréé et
    l'ancien port refermé dans ufw.
