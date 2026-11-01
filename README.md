@@ -430,7 +430,9 @@ de parties, illisibles par la version actuelle, sont rangées dans
 Le compte du jeu possède `dgldir`, `mail`, `save` et les scores :
 rien n'y est écrit en suivant un lien symbolique. Tout est préparé dans un
 dossier réservé à root (`/opt/nethack/.restauration.*`), puis mis en place par
-renommage, et les liens symboliques contenus dans l'archive sont ignorés. La
+renommage, et les liens symboliques contenus dans l'archive sont ignorés.
+Les comptes restaurés ne comptent pas comme nouveaux pour l'alerte
+d'inscriptions de l'entretien. La
 dernière exécution du script d'installation réapplique ses
 réglages (`WIZARDS`, `maxusers`, nom du serveur…) à la configuration restaurée.
 Les archives faites avant cette version ne contiennent ni l'UID du jeu, ni sa

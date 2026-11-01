@@ -97,6 +97,7 @@ EXCLUS_JEU=(--exclude=/save --exclude=/record --exclude=/logfile
             --exclude='/*.[0-9][0-9][0-9]')
 UID_JEU="/opt/nethack/jeu.uid"   # UID des parties (nom des sauvegardes : <uid><pseudo>)
 WIZARD_CONFIRME="/opt/nethack/wizard.confirme" # « pseudo:empreinte » du compte debug confirmé
+COMPTES_PRECEDENT="/opt/nethack/comptes.precedent" # nombre de comptes au dernier entretien
 
 etape()  { printf '\n\033[1;32m==> %s\033[0m\n' "$*"; }
 info()   { printf '    %s\n' "$*"; }
@@ -1394,7 +1395,7 @@ DEST="$SAUVEGARDES"
 SAUVEGARDES_JOURS=$SAUVEGARDES_JOURS
 TTYREC_JOURS=$TTYREC_JOURS
 ALERTE_INSCRIPTIONS=$ALERTE_INSCRIPTIONS
-COMPTES_PRECEDENT="/opt/nethack/comptes.precedent"
+COMPTES_PRECEDENT="$COMPTES_PRECEDENT"
 UID_JEU="$UID_JEU"
 WIZARD_CONFIRME="$WIZARD_CONFIRME"
 VERSION_NH="$VERSION_NH"
@@ -1532,6 +1533,7 @@ DEST="$SAUVEGARDES"
 UID_JEU="$UID_JEU"
 WIZARD_CONFIRME="$WIZARD_CONFIRME"
 VERSION_NH="$VERSION_NH"
+COMPTES_PRECEDENT="$COMPTES_PRECEDENT"
 JEU="$COMPTE_JEU"
 EOF
     cat <<'EOF'
@@ -1678,6 +1680,9 @@ if [ -f "$tmp/${WIZARD_CONFIRME##*/}" ]; then
     placer "$tmp/${WIZARD_CONFIRME##*/}" "$WIZARD_CONFIRME" root:root 644
 fi
 rmdir "$prep"
+# Point de départ du bilan d'entretien : les comptes restaurés ne sont pas
+# une vague d'inscriptions
+echo "$comptes" > "$COMPTES_PRECEDENT"
 
 echo "Restauré : ${archive##*/} ($comptes comptes)."
 echo "Relancez maintenant install-serveur-nethack.sh sur l'hôte : il réapplique"
