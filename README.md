@@ -408,7 +408,9 @@ sudo ./install-serveur-nethack.sh                  # 3. réglages réappliqués
 `nethack-restaurer` refuse de travailler pendant une partie et sauvegarde
 d'abord l'état actuel (pour revenir en arrière, restaurer cette archive-là).
 Il remplace la base des comptes, les scores, les journaux, `sysconf`,
-`dgamelaunch.conf`, les menus et la confirmation du compte debug ; il fusionne
+`dgamelaunch.conf` (dont `chroot_path`, `shed_uid` et `shed_gid` sont aussitôt
+remis aux valeurs de ce conteneur), les menus et la confirmation du compte
+debug ; il fusionne
 les réglages des joueurs, les sauvegardes de parties et le courrier (un
 fichier du même nom est remplacé). Si l'UID de `nhjeu` a changé avec le
 nouveau conteneur, les sauvegardes de parties (`<uid><pseudo>`) sont

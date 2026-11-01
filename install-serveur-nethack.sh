@@ -1623,7 +1623,15 @@ if [ -f "$tmp/$NH/sysconf" ]; then placer "$tmp/$NH/sysconf" "$C/$NH/sysconf" ro
 for f in "$tmp"/dgl_menu_*.txt "$tmp/dgl-banner" "$tmp"/dgl-default-rcfile.*; do
     if [ -f "$f" ]; then placer "$f" "$C/${f##*/}" root:root 644; fi
 done
-if [ -f "$tmp/${CONF##*/}" ]; then placer "$tmp/${CONF##*/}" "$CONF" root:root 644; fi
+if [ -f "$tmp/${CONF##*/}" ]; then
+    placer "$tmp/${CONF##*/}" "$CONF" root:root 644
+    # Compte du jeu et chroot de ce conteneur, sans attendre la relance du
+    # script : sinon, si l'UID a changé, les parties lancées d'ici là
+    # tourneraient sous l'ancien UID, sans droits sur leurs fichiers
+    sed -i -e "s|^chroot_path = .*|chroot_path = \"$C/\"|" \
+           -e "s|^shed_uid = .*|shed_uid = $(id -u "$JEU")|" \
+           -e "s|^shed_gid = .*|shed_gid = $(id -g "$JEU")|" "$CONF"
+fi
 if [ -f "$tmp/${WIZARD_CONFIRME##*/}" ]; then
     placer "$tmp/${WIZARD_CONFIRME##*/}" "$WIZARD_CONFIRME" root:root 644
 fi
